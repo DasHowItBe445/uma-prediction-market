@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.0;
 import "./common/CommonOptimisticOracleV3Test.sol";
-import "@uma/core/contracts/optimistic-oracle-v3/implementation/examples/PredictionMarket.sol";
+import "../src/MyPredictionMarket.sol";
+
 
 contract PredictionMarketTestCommon is CommonOptimisticOracleV3Test {
-    PredictionMarket public predictionMarket;
+    MyPredictionMarket public predictionMarket;
     string outcome1 = "Red";
     string outcome2 = "Blue";
     string description = "Which team wins?";
@@ -14,7 +15,7 @@ contract PredictionMarketTestCommon is CommonOptimisticOracleV3Test {
 
     function _commonPredictionMarketSetUp() public {
         _commonSetup();
-        predictionMarket = new PredictionMarket(address(finder), address(defaultCurrency), address(optimisticOracleV3));
+        predictionMarket = new MyPredictionMarket(address(finder), address(defaultCurrency), address(optimisticOracleV3));
         uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
         requiredBond = minimumBond < 1000e18 ? 1000e18 : minimumBond; // Make sure the bond is sufficient.
         _fundInitializationReward();
@@ -51,7 +52,7 @@ contract PredictionMarketTestCommon is CommonOptimisticOracleV3Test {
     }
 
     function _mintAndSwapOutcomeTokens(bytes32 marketId) internal {
-        PredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
+        MyPredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
         _fundCurrencyForMinting(TestAddress.account2);
         _fundCurrencyForMinting(TestAddress.account3);
 
@@ -73,7 +74,7 @@ contract PredictionMarketTestCommon is CommonOptimisticOracleV3Test {
 
     function _settleAssertionAndTokens(bytes32 assertionId) internal {
         (, bytes32 marketId) = predictionMarket.assertedMarkets(assertionId);
-        PredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
+        MyPredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
 
         // Settle the assertion after liveness.
         timer.setCurrentTime(timer.getCurrentTime() + defaultLiveness);

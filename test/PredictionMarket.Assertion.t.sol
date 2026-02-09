@@ -16,7 +16,7 @@ contract PredictionMarketAssertionTest is PredictionMarketTestCommon {
         vm.prank(TestAddress.account1);
         predictionMarket.assertMarket(bytes32(0), outcome1);
 
-        vm.expectRevert("Invalid asserted outcome");
+        vm.expectRevert("Invalid outcome");
         vm.prank(TestAddress.account1);
         predictionMarket.assertMarket(marketId, "Invalid");
     }
@@ -40,7 +40,7 @@ contract PredictionMarketAssertionTest is PredictionMarketTestCommon {
         assertEq(defaultCurrency.balanceOf(address(optimisticOracleV3)), ooBalanceBefore + requiredBond);
 
         // Verify PredictionMarket storage.
-        PredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
+        MyPredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
         assertEq(market.assertedOutcomeId, keccak256(bytes(outcome1)));
         (address storedAsserter, bytes32 storedMarketId) = predictionMarket.assertedMarkets(assertionId);
         assertEq(storedAsserter, TestAddress.account1);

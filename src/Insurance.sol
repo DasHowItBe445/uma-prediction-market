@@ -5,11 +5,9 @@ import "@uma/core/contracts/optimistic-oracle-v3/implementation/ClaimData.sol";
 import "@uma/core/contracts/optimistic-oracle-v3/interfaces/OptimisticOracleV3Interface.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-// This Isurance contract enables for the issuance of a single unlimited time policy per event/payout recipient There is
-// no limit to the number of payout requests that can be made of the same policy; however, only the first asserted
-// request will settle the insurance payment, whereas OOv3 will settle bonds for all requestors.
 contract Insurance {
     using SafeERC20 for IERC20;
+
     IERC20 public immutable defaultCurrency;
     OptimisticOracleV3Interface public immutable oo;
     uint64 public constant assertionLiveness = 7200;
@@ -23,8 +21,10 @@ contract Insurance {
     }
 
     mapping(bytes32 => bytes32) public assertedPolicies;
-
     mapping(bytes32 => Policy) public policies;
+
+    // ✅ Stores final outcome
+    mapping(bytes32 => uint256) public finalOutcome;
 
     event InsuranceIssued(
         bytes32 indexed policyId,
@@ -33,8 +33,9 @@ contract Insurance {
         address indexed payoutAddress
     );
 
-    event InsurancePayoutRequested(bytes32 indexed policyId, bytes32 indexed assertionId);
+    event OutcomeResolved(bytes32 indexed assertionId, uint256 outcome);
 
+    event InsurancePayoutRequested(bytes32 indexed policyId, bytes32 indexed assertionId);
     event InsurancePayoutSettled(bytes32 indexed policyId, bytes32 indexed assertionId);
 
     constructor(address _defaultCurrency, address _optimisticOracleV3) {
@@ -49,22 +50,29 @@ contract Insurance {
         bytes memory insuredEvent
     ) public returns (bytes32 policyId) {
         policyId = keccak256(abi.encode(insuredEvent, payoutAddress));
+
         require(policies[policyId].payoutAddress == address(0), "Policy already exists");
+
         policies[policyId] = Policy({
             insuranceAmount: insuranceAmount,
             payoutAddress: payoutAddress,
             insuredEvent: insuredEvent,
             settled: false
         });
+
         defaultCurrency.safeTransferFrom(msg.sender, address(this), insuranceAmount);
+
         emit InsuranceIssued(policyId, insuredEvent, insuranceAmount, payoutAddress);
     }
 
     function requestPayout(bytes32 policyId) public returns (bytes32 assertionId) {
         require(policies[policyId].payoutAddress != address(0), "Policy does not exist");
+
         uint256 bond = oo.getMinimumBond(address(defaultCurrency));
+
         defaultCurrency.safeTransferFrom(msg.sender, address(this), bond);
         defaultCurrency.safeApprove(address(oo), bond);
+
         assertionId = oo.assertTruth(
             abi.encodePacked(
                 "Insurance contract is claiming that insurance event ",
@@ -75,35 +83,60 @@ contract Insurance {
             ),
             msg.sender,
             address(this),
-            address(0), // No sovereign security.
+            address(0),
             assertionLiveness,
             defaultCurrency,
             bond,
             defaultIdentifier,
-            bytes32(0) // No domain.
+            bytes32(0)
         );
+
         assertedPolicies[assertionId] = policyId;
+
         emit InsurancePayoutRequested(policyId, assertionId);
     }
 
-    function assertionResolvedCallback(bytes32 assertionId, bool assertedTruthfully) public {
-        require(msg.sender == address(oo));
-        // If the assertion was true, then the policy is settled.
+    // ✅ UMA callback
+    function assertionResolvedCallback(
+        bytes32 assertionId,
+        bool assertedTruthfully
+    ) public {
+        require(msg.sender == address(oo), "Only OO can callback");
+
+        uint256 outcome = assertedTruthfully ? 1 : 0;
+
+        // ✅ Store result
+        finalOutcome[assertionId] = outcome;
+
+        // ✅ Emit result
+        emit OutcomeResolved(assertionId, outcome);
+
         if (assertedTruthfully) {
             _settlePayout(assertionId);
         }
     }
 
-    function assertionDisputedCallback(bytes32 assertionId) public {}
+    function assertionDisputedCallback(bytes32) public {}
 
     function _settlePayout(bytes32 assertionId) internal {
-        // If already settled, do nothing. We don't revert because this function is called by the
-        // OptimisticOracleV3, which may block the assertion resolution.
         bytes32 policyId = assertedPolicies[assertionId];
+
         Policy storage policy = policies[policyId];
+
         if (policy.settled) return;
+
         policy.settled = true;
-        defaultCurrency.safeTransfer(policy.payoutAddress, policy.insuranceAmount);
+
+        defaultCurrency.safeTransfer(
+            policy.payoutAddress,
+            policy.insuranceAmount
+        );
+
         emit InsurancePayoutSettled(policyId, assertionId);
+    }
+
+    // ✅ Public getter
+    function getOutcome(bytes32 assertionId) external view returns (uint256) {
+        return finalOutcome[assertionId];
     }
 }

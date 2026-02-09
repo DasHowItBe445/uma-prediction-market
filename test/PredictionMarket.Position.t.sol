@@ -4,7 +4,7 @@ import "./PredictionMarket.Common.sol";
 
 contract PredictionMarketPositionTest is PredictionMarketTestCommon {
     bytes32 marketId;
-    PredictionMarket.Market market;
+    MyPredictionMarket.Market market;
 
     function setUp() public {
         _commonPredictionMarketSetUp();

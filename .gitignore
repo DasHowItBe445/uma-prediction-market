@@ -1,3 +1,19 @@
-broadcast/
-cache/
+# Environment
+.env
+.env.local
+
+# Foundry
 out/
+cache/
+broadcast/
+
+# Private keys
+*.key
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/

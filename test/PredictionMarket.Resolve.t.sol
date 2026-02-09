@@ -26,7 +26,7 @@ contract PredictionMarketResolveTest is PredictionMarketTestCommon {
         assertEq(defaultCurrency.balanceOf(TestAddress.account1), asserterBalanceBefore + requiredBond + reward);
 
         // Verify resolved in PredictionMarket storage.
-        PredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
+        MyPredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
         assertTrue(market.resolved);
         assertEq(market.assertedOutcomeId, keccak256(bytes(outcome1)));
     }
@@ -51,7 +51,7 @@ contract PredictionMarketResolveTest is PredictionMarketTestCommon {
         );
 
         // Verify resolved in PredictionMarket storage.
-        PredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
+        MyPredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
         assertTrue(market.resolved);
         assertEq(market.assertedOutcomeId, keccak256(bytes(outcome1)));
     }
@@ -74,7 +74,7 @@ contract PredictionMarketResolveTest is PredictionMarketTestCommon {
         assertEq(defaultCurrency.balanceOf(address(predictionMarket)), reward);
 
         // Verify not resolved and unblocked in PredictionMarket storage.
-        PredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
+        MyPredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
         assertFalse(market.resolved);
         assertEq(market.assertedOutcomeId, bytes32(0));
     }
@@ -94,7 +94,7 @@ contract PredictionMarketResolveTest is PredictionMarketTestCommon {
         assertTrue(optimisticOracleV3.settleAndGetAssertionResult(secondAssertionId));
 
         // Verify the second outcome resolved in PredictionMarket storage.
-        PredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
+        MyPredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
         assertTrue(market.resolved);
         assertEq(market.assertedOutcomeId, keccak256(bytes(outcome2)));
     }
