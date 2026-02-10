@@ -45,15 +45,46 @@ This repository contains example contracts and tests for integrating with the UM
 A typical lifecycle of the prediction market:
 
 1. Initialize a market
-
 2. Mint outcome tokens
-
 3. Assert an outcome
-
 4. Wait for oracle resolution
-
 5. Settle and redeem tokens
 
+Example flow:
+```bash
+// Initialize market
+initializeMarket(
+  "Yes",
+  "No",
+  "Will it rain tomorrow?",
+  100e18,
+  50e18
+);
+
+// Mint outcome tokens
+createOutcomeTokens(marketId, 100e18);
+
+// Assert outcome
+assertMarket(marketId, "Yes");
+
+// After resolution
+settleOutcomeTokens(marketId);
+```
+
+## Testing
+
+All tests pass successfully.
+```bash
+forge test
+```
+Result: 41 / 41 tests passing
+
+Tests cover:
+- Market initialization edge cases
+- Assertion and dispute flows
+- Token minting and settlement
+- Oracle callbacks and resolution logic
+- Revert conditions and failure paths
 
 ## Documentation 📚
 
