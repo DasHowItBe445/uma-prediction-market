@@ -71,6 +71,7 @@ contract Insurance {
         uint256 bond = oo.getMinimumBond(address(defaultCurrency));
 
         defaultCurrency.safeTransferFrom(msg.sender, address(this), bond);
+        defaultCurrency.safeApprove(address(oo), 0);
         defaultCurrency.safeApprove(address(oo), bond);
 
         assertionId = oo.assertTruth(
