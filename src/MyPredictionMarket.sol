@@ -230,6 +230,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
             bond
         );
 
+        currency.safeApprove(address(oo), 0);
         currency.safeApprove(address(oo), bond);
 
         aid = oo.assertTruth(
