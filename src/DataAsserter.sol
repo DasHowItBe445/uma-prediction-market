@@ -64,6 +64,7 @@ contract DataAsserter is OptimisticOracleV3CallbackRecipientInterface {
         asserter = asserter == address(0) ? msg.sender : asserter;
         uint256 bond = oo.getMinimumBond(address(defaultCurrency));
         defaultCurrency.safeTransferFrom(msg.sender, address(this), bond);
+        defaultCurrency.safeApprove(address(oo), 0);
         defaultCurrency.safeApprove(address(oo), bond);
 
         // The claim we want to assert is the first argument of assertTruth. It must contain all of the relevant
