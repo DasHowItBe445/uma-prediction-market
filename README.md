@@ -1,3 +1,39 @@
+# UMA-Based Prediction Market
+
+This repository contains a custom Prediction Market built using
+UMA Optimistic Oracle V3.
+
+## Project Overview
+
+- Smart Contract: MyPredictionMarket.sol
+- Network: Sepolia Testnet
+- Oracle: UMA Optimistic Oracle V3
+- Framework: Foundry
+
+This project allows users to:
+- Create prediction markets
+- Mint outcome tokens
+- Assert outcomes via UMA Oracle
+- Settle markets after resolution
+
+## Deployment
+
+The contract has been deployed on Sepolia:
+
+Contract Address:
+0x4175457475702095B0f785E0eC4ED70c5c37B932
+
+Verified on Etherscan:
+https://sepolia.etherscan.io/address/0x4175457475702095b0f785e0ec4ed70c5c37b932
+
+Deployment was done using:
+
+```bash
+forge script script/DeployPredictionMarket.s.sol \
+  --rpc-url $RPC_URL \
+  --broadcast \
+  --private-key $PRIVATE_KEY
+
 # Quickstart for Integrating with UMA Optimistic Oracle V3
 <a href="https://docs.uma.xyz/developers/optimistic-oracle"><img alt="OO" src="https://miro.medium.com/v2/resize:fit:1400/1*hLSl9M87P80A1pZ9vuTvyA.gif" width=600></a>
 
