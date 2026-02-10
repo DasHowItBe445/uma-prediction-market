@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity ^0.8.0;
 
+import "@uma/core/contracts/optimistic-oracle-v3/interfaces/OptimisticOracleV3CallbackRecipientInterface.sol";
 import "@uma/core/contracts/optimistic-oracle-v3/implementation/ClaimData.sol";
 import "@uma/core/contracts/optimistic-oracle-v3/interfaces/OptimisticOracleV3Interface.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -9,7 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 // proposed value so that it may be retrieved on chain. The dataId is intended to be an arbitrary value that uniquely
 // identifies a specific piece of information in the consuming contract and is replaceable. Similarly, any data
 // structure can be used to replace the asserted data.
-contract DataAsserter {
+contract DataAsserter is OptimisticOracleV3CallbackRecipientInterface {
     using SafeERC20 for IERC20;
     IERC20 public immutable defaultCurrency;
     OptimisticOracleV3Interface public immutable oo;
@@ -107,7 +108,8 @@ contract DataAsserter {
     function assertionResolvedCallback(
         bytes32 assertionId,
         bool assertedTruthfully
-    ) public {
+    ) external
+    override {
         require(msg.sender == address(oo));
         // If the assertion was true, then the data assertion is resolved.
         if (assertedTruthfully) {
@@ -125,5 +127,8 @@ contract DataAsserter {
 
     // If assertion is disputed, do nothing and wait for resolution.
     // This OptimisticOracleV3 callback function needs to be defined so the OOv3 doesn't revert when it tries to call it.
-    function assertionDisputedCallback(bytes32 assertionId) public {}
+    function assertionDisputedCallback(bytes32 assertionId) 
+        external
+        override
+    {}
 }
