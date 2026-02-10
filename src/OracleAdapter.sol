@@ -16,24 +16,25 @@ contract OracleAdapter is OptimisticOracleV3CallbackRecipientInterface {
 
     uint64 public constant LIVENESS = 7200;
 
-    address public market;
+    /// @notice Bound prediction market (immutable)
+    address public immutable market;
 
     modifier onlyMarket() {
-        require(msg.sender == market, "Not market");
+        require(msg.sender == market, "OracleAdapter: not market");
         _;
     }
 
     constructor(
         address _oo,
-        address _currency
+        address _currency,
+        address _market
     ) {
+        require(_market != address(0), "OracleAdapter: zero market");
+
         oo = OptimisticOracleV3Interface(_oo);
         currency = IERC20(_currency);
         identifier = oo.defaultIdentifier();
-    }
 
-    function setMarket(address _market) external {
-        require(market == address(0), "Already set");
         market = _market;
     }
 
@@ -66,12 +67,15 @@ contract OracleAdapter is OptimisticOracleV3CallbackRecipientInterface {
         bool ok
     )
         external
+        override
     {
-        require(msg.sender == address(oo));
+        require(msg.sender == address(oo), "OracleAdapter: not oracle");
 
-        IPredictionMarket(market)
-            .onOracleResolve(id, ok);
+        IPredictionMarket(market).onOracleResolve(id, ok);
     }
 
-    function assertionDisputedCallback(bytes32) external {}
+    function assertionDisputedCallback(bytes32)
+        external
+        override
+    {}
 }
