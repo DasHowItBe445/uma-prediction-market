@@ -1,7 +1,8 @@
 # UMA-Based Prediction Market
 
-This repository contains a custom Prediction Market built using
-UMA Optimistic Oracle V3.
+This repository contains a custom Prediction Market smart contract built using UMA Optimistic Oracle V3 and Foundry.
+
+The project demonstrates how decentralized markets can be created, asserted, disputed, and resolved using UMA’s optimistic oracle design.
 
 ## Project Overview
 
@@ -14,7 +15,9 @@ This project allows users to:
 - Create prediction markets
 - Mint outcome tokens
 - Assert outcomes via UMA Oracle
+- Handle disputes and re-assertions
 - Settle markets after resolution
+- Redeem outcome tokens for collateral
 
 ## Deployment
 
@@ -33,8 +36,24 @@ forge script script/DeployPredictionMarket.s.sol \
   --rpc-url $RPC_URL \
   --broadcast \
   --private-key $PRIVATE_KEY
+```
 
 This repository contains example contracts and tests for integrating with the UMA Optimistic Oracle V3.
+
+## Usage Example
+
+A typical lifecycle of the prediction market:
+
+1. Initialize a market
+
+2. Mint outcome tokens
+
+3. Assert an outcome
+
+4. Wait for oracle resolution
+
+5. Settle and redeem tokens
+
 
 ## Documentation 📚
 
