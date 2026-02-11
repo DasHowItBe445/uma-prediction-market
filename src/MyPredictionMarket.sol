@@ -201,7 +201,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     }
 
     emit MarketInitialized(id);
-    }
+}
 
 
     /**
@@ -212,7 +212,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     * - Caller stakes `requiredBond` tokens.
     * - Bond is transferred to this contract.
     * - Contract approves UMA Oracle to pull the bond.
-    * - If assertion is truthful:
+    * - If assertion is truthful:   
     *      → Bond is returned by UMA.
     *      → Caller receives `reward`.
     * - If assertion is false:
