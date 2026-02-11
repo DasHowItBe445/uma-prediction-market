@@ -13,6 +13,18 @@ import "./TokenFactory.sol";
 contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     using SafeERC20 for IERC20;
 
+    /* ---------------- Reentrancy Guard ---------------- */
+
+    uint256 private locked = 1;
+
+    modifier nonReentrant() {
+        require(locked == 1, "Reentrancy");
+        locked = 2;
+        _;
+        locked = 1;
+    }
+
+
     /* ---------------- Storage ---------------- */
 
     address public treasury;
@@ -457,14 +469,33 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
     }
 
+    /**
+     * @notice Redeem outcome tokens before market resolution.
+    *
+    * @dev
+    * Allows users to exit positions early by burning both outcome tokens
+    * and reclaiming collateral.
+    *
+    * This functions as a "pre-resolution unwind" mechanism and is
+    * intentionally permitted before oracle resolution.
+    *
+    * Users forfeit any claim to future rewards when using this.
+     */
+
     function redeemOutcomeTokens(
         bytes32 id,
         uint256 amt
     )
         external
         active
+        nonReentrant
     {
         Market storage m = markets[id];
+
+        require(
+            address(m.outcome1Token) != address(0),
+            "Market does not exist"
+        );
 
         m.outcome1Token.burnFrom(msg.sender, amt);
         m.outcome2Token.burnFrom(msg.sender, amt);
@@ -481,6 +512,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     function settleOutcomeTokens(bytes32 id)
         external
         active
+        nonReentrant
         returns (uint256 out)
     {
         Market storage m = markets[id];
