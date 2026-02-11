@@ -301,7 +301,8 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     {
         Market storage m = markets[id];
 
-        require(!m.resolved, "Resolved");
+        require(address(m.outcome1Token) != address(0), "Market does not exist");
+        require(!m.resolved, "Market already resolved");
 
         currency.safeTransferFrom(
             msg.sender,
