@@ -31,6 +31,8 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
     bytes public constant unresolvable = "Unresolvable";
 
+    uint256 private marketNonce;    
+
     /* ---------------- Structs ---------------- */
 
     struct Market {
@@ -129,78 +131,102 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     */
 
     function initializeMarket(
-        string memory o1,
-        string memory o2,
-        string memory d,
-        uint256 reward,
-        uint256 bond
-    )
-        external
-        active
-        returns (bytes32 id)
-    {
-        require(bytes(o1).length > 0, "Empty first outcome");
-        require(bytes(o2).length > 0, "Empty second outcome");
-        require(bytes(d).length > 0, "Empty description");
+    string memory o1,
+    string memory o2,
+    string memory d,
+    uint256 reward,
+    uint256 bond
+)
+    external
+    active
+    returns (bytes32 id)
+{
+    require(bytes(o1).length > 0, "Empty first outcome");
+    require(bytes(o2).length > 0, "Empty second outcome");
+    require(bytes(d).length > 0, "Empty description");
 
-        require(
-            keccak256(bytes(o1)) != keccak256(bytes(o2)),
-            "Outcomes are the same"
+    require(
+        keccak256(bytes(o1)) != keccak256(bytes(o2)),
+        "Outcomes are the same"
+    );
+
+    // Robust unique ID
+    id = keccak256(
+        abi.encode(
+            msg.sender,
+            d,
+            block.timestamp,
+            marketNonce
+        )
+    );
+
+    marketNonce++;
+
+    require(
+        address(markets[id].outcome1Token) == address(0),
+        "Market already exists"
+    );
+
+    ExpandedERC20 t1 =
+        factory.create(
+            string(abi.encodePacked(o1, " Token")),
+            "O1"
         );
 
-        id = keccak256( 
-            abi.encode(
-                msg.sender,
-                d,
-                block.timestamp,
-                marketCount
-            )
+    ExpandedERC20 t2 =
+        factory.create(
+            string(abi.encodePacked(o2, " Token")),
+            "O2"
         );
 
-        marketCount++;
+    markets[id] = Market(
+        false,
+        bytes32(0),
+        bytes32(0),
+        t1,
+        t2,
+        reward,
+        bond,
+        bytes(o1),
+        bytes(o2),
+        bytes(d)
+    );
 
-        require(
-            address(markets[id].outcome1Token) == address(0),
-            "Market already exists"
+    if (reward > 0) {
+        currency.safeTransferFrom(
+            msg.sender,
+            address(this),
+            reward
         );
-
-        ExpandedERC20 t1 =
-            factory.create(
-                string(abi.encodePacked(o1, " Token")),
-                "O1"
-            );
-
-        ExpandedERC20 t2 =
-            factory.create(
-                string(abi.encodePacked(o2, " Token")),
-                "O2"
-            );
-
-        markets[id] = Market(
-            false,
-            bytes32(0),
-            bytes32(0),
-            t1,
-            t2,
-            reward,
-            bond,
-            bytes(o1),
-            bytes(o2),
-            bytes(d)
-        );
-
-        if (reward > 0) {
-            currency.safeTransferFrom(
-                msg.sender,
-                address(this),
-                reward
-            );
-        }
-
-        emit MarketInitialized(id);
     }
 
-    /* ---------------- Assertion ---------------- */
+    emit MarketInitialized(id);
+    }
+
+
+    /**
+     * @notice Submits an outcome assertion to the UMA Optimistic Oracle.
+    *
+    * @dev
+    * Economic flow:
+    * - Caller stakes `requiredBond` tokens.
+    * - Bond is transferred to this contract.
+    * - Contract approves UMA Oracle to pull the bond.
+    * - If assertion is truthful:
+    *      → Bond is returned by UMA.
+    *      → Caller receives `reward`.
+    * - If assertion is false:
+    *      → Bond is slashed by UMA.
+    *      → Reward is not paid.
+    *
+    * Only one active assertion per market is allowed at a time.
+    *
+    * @param id Market identifier.
+    * @param out Outcome being asserted.
+    *
+    * @return aid UMA assertion identifier.
+    */
+
 
     function assertMarket(
         bytes32 id,
