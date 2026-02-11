@@ -30,14 +30,29 @@ contract PredictionMarketInitializeTest is PredictionMarketTestCommon {
         vm.stopPrank();
     }
 
-    function test_RevertIf_DuplicateMarket() public {
-        vm.prank(TestAddress.owner);
-        predictionMarket.initializeMarket(outcome1, outcome2, description, reward, requiredBond);
+    function test_AllowDuplicateDescriptions() public {
+    vm.prank(TestAddress.owner);
+    bytes32 id1 = predictionMarket.initializeMarket(
+        outcome1,
+        outcome2,
+        description,
+        reward,
+        requiredBond
+    );
 
-        _fundInitializationReward();
-        vm.expectRevert("Market already exists");
-        vm.prank(TestAddress.owner);
-        predictionMarket.initializeMarket(outcome1, outcome2, description, reward, requiredBond);
+    _fundInitializationReward();
+
+    vm.prank(TestAddress.owner);
+    bytes32 id2 = predictionMarket.initializeMarket(
+        outcome1,
+        outcome2,
+        description,
+        reward,
+        requiredBond
+    );
+
+    // Same params → different IDs
+        assertTrue(id1 != id2, "Duplicate markets should have different IDs");
     }
 
     function test_DuplicateMarketNextBlock() public {

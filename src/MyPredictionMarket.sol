@@ -58,6 +58,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
     mapping(bytes32 => Market) public markets;
     mapping(bytes32 => AssertedMarket) public assertedMarkets;
+    uint256 public marketCount;
 
     /* ---------------- Events ---------------- */
 
@@ -129,7 +130,16 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
             "Outcomes are the same"
         );
 
-        id = keccak256(abi.encode(block.number, d));
+        id = keccak256( 
+            abi.encode(
+                msg.sender,
+                d,
+                block.timestamp,
+                marketCount
+            )
+        );
+
+        marketCount++;
 
         require(
             address(markets[id].outcome1Token) == address(0),
