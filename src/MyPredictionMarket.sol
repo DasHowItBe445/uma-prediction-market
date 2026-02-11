@@ -67,6 +67,30 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     event MarketInitialized(bytes32 id);
     event MarketResolved(bytes32 id);
 
+    event OutcomeTokensCreated(
+        bytes32 indexed marketId,
+        address indexed user,
+        uint256 amount
+    );
+
+    event OutcomeTokensRedeemed(
+        bytes32 indexed marketId,
+        address indexed user,
+        uint256 amount
+    );
+
+    event AssertionSubmitted(
+        bytes32 indexed marketId,
+        bytes32 indexed assertionId,
+        address indexed asserter,
+        string outcome
+    );
+
+    event AssertionRejected(
+        bytes32 indexed marketId,
+        bytes32 indexed assertionId
+    );
+
     /* ---------------- Modifiers ---------------- */
 
     modifier onlyTreasury() {
@@ -301,6 +325,13 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
         assertedMarkets[aid] =
             AssertedMarket(msg.sender, id);
+
+        emit AssertionSubmitted(
+            id,
+            aid,
+            msg.sender,
+            out
+        );  
     }
 
     /* ---------------- Oracle ---------------- */
@@ -334,6 +365,11 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
             emit MarketResolved(a.marketId);
         } else {
             m.assertedOutcomeId = bytes32(0);
+
+            emit AssertionRejected(
+                a.marketId,
+                aid
+                );
         }
 
         delete assertedMarkets[aid];
@@ -412,6 +448,13 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
         m.outcome1Token.mint(msg.sender, amt);
         m.outcome2Token.mint(msg.sender, amt);
+
+        emit OutcomeTokensCreated(
+            id,
+            msg.sender,
+            amt
+        );
+
     }
 
     function redeemOutcomeTokens(
@@ -427,6 +470,12 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
         m.outcome2Token.burnFrom(msg.sender, amt);
 
         currency.safeTransfer(msg.sender, amt);
+
+        emit OutcomeTokensRedeemed(
+            id,
+            msg.sender,
+            amt
+        );
     }
 
     function settleOutcomeTokens(bytes32 id)
