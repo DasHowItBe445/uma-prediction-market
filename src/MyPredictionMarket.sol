@@ -108,7 +108,25 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
         paused = false;
     }
 
-    /* ---------------- Market ---------------- */
+    /**
+     * @notice Initializes a new prediction market.
+    *
+    * @dev
+    * Economic flow:
+    * - Creator deposits `reward` tokens as incentive.
+    * - These tokens are locked in the contract until resolution.
+    * - Reward is paid to the truthful asserter after resolution.
+    *
+    * Market lifecycle starts after this call.
+    *
+    * @param o1 First outcome label.
+    * @param o2 Second outcome label.
+    * @param d Market description.
+    * @param reward Incentive paid to correct asserter.
+    * @param bond Bond required for assertions.
+    *
+    * @return id Unique market identifier.
+    */
 
     function initializeMarket(
         string memory o1,
