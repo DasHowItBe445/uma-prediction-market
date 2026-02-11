@@ -344,6 +344,52 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
         override
     {}
 
+    /**
+    * ------------------------------------------------------------
+    * ECONOMIC MODEL OVERVIEW
+     * ------------------------------------------------------------
+    *
+    * 1. Market Creation
+    * ------------------
+    * - Creator optionally deposits `reward` tokens.
+    * - These tokens are held by this contract.
+    * - Reward is paid to the truthful asserter after resolution.
+    *
+    * 2. Assertion Phase
+    * ------------------
+    * - An asserter stakes a `bond` (minimum enforced by UMA).
+    * - Bond is transferred to this contract.
+    * - Contract approves UMA to pull the bond.
+    *
+    * 3. Resolution
+    * -------------
+    * - If assertion is truthful:
+    *     -> UMA returns bond to asserter.
+    *     -> Contract pays `reward` to asserter.
+    *
+    * - If assertion is false:
+    *     -> UMA slashes bond.
+    *     -> No reward is paid.
+    *     -> Market can be re-asserted.
+    *
+    * 4. Outcome Tokens
+    * ----------------
+    * - Users deposit collateral to mint paired outcome tokens.
+    * - Tokens represent positions on each outcome.
+    *
+    * 5. Early Exit (Pre-Resolution)
+    * -----------------------------
+    * - Users may burn both outcome tokens before resolution.
+    * - They receive their collateral back.
+    *
+    * 6. Settlement (Post-Resolution)
+    * -------------------------------
+    * - Winning token holders redeem full collateral.
+    * - Losing side receives nothing.
+    * - If outcome is "Unresolvable":
+    *     -> Both sides receive half payout.
+    */
+
     /* ---------------- Tokens ---------------- */
 
     function createOutcomeTokens(
