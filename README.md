@@ -24,10 +24,10 @@ This project allows users to:
 The contract has been deployed on Sepolia:
 
 Contract Address:
-0x4175457475702095B0f785E0eC4ED70c5c37B932
+0xf9168C61523cD2151e4830185419247EE8fdB249
 
 Verified on Etherscan:
-https://sepolia.etherscan.io/address/0x4175457475702095b0f785e0ec4ed70c5c37b932
+https://sepolia.etherscan.io/address/0xf9168C61523cD2151e4830185419247EE8fdB249
 
 Deployment was done using:
 
@@ -85,6 +85,20 @@ Tests cover:
 - Token minting and settlement
 - Oracle callbacks and resolution logic
 - Revert conditions and failure paths
+
+## Frontend
+
+Location: prediction-market-frontend/
+
+Tech Stack:
+- Next.js
+- Ethers.js
+- TailwindCSS
+
+Run locally:
+cd prediction-market-frontend
+npm install
+npm run dev
 
 ## Documentation 📚
 

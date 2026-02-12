@@ -119,22 +119,20 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     // ⚠️ MUST stay at 3 args (tests depend on this)
 
     constructor(
-        address _finder,
-        address _currency,
-        address _oo
-    ) {
-        finder = _finder;
+    address _finder,
+    address _currency,
+    address _oo
+) {
+    finder = _finder;
+    currency = IERC20(_currency);
+    oo = OptimisticOracleV3Interface(_oo);
 
-        currency = IERC20(_currency);
-        oo = OptimisticOracleV3Interface(_oo);
+    defaultIdentifier = bytes32("ASSERT_TRUTH");
 
-        defaultIdentifier = oo.defaultIdentifier();
+    factory = new TokenFactory();
+    treasury = msg.sender;
+}
 
-        // Deploy factory internally (no 4th arg)
-        factory = new TokenFactory();
-
-        treasury = msg.sender;
-    }
 
     /* ---------------- Admin ---------------- */
 

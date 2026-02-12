@@ -134,4 +134,3 @@ Malicious mint/burn abuse.
 
 This threat model reflects current known risks.
 New vulnerabilities may exist.
-System is intended for research and educational use.
