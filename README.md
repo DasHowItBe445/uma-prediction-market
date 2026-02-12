@@ -96,9 +96,33 @@ Tech Stack:
 - TailwindCSS
 
 Run locally:
+```bash
 cd prediction-market-frontend
 npm install
 npm run dev
+```
+
+## Open:
+
+http://localhost:3000/
+
+## Features
+
+- Wallet connection (MetaMask)
+- Create markets
+- Mint outcome tokens
+- Assert outcomes
+- Redeem tokens
+- Transaction status modal
+
+## Demo
+
+1. Connect MetaMask to Sepolia
+2. Get test ETH from faucet
+3. Create market
+4. Mint tokens
+5. Assert outcome
+6. Wait for resolution
 
 ## Documentation 📚
 
@@ -107,6 +131,26 @@ Full documentation on how to build, test, deploy and interact with the example c
 
 This project uses [Foundry](https://getfoundry.sh). See the [book](https://book.getfoundry.sh/getting-started/installation.html)
  for instructions on how to install and use Foundry.
+
+## Prerequisites
+
+Before starting, make sure you have:
+
+- Node.js (v18+ recommended)
+- MetaMask wallet
+- Sepolia test ETH
+- Foundry installed
+- An RPC provider (Alchemy/Infura/Ankr)
+
+## Environment Setup
+
+Create a `.env` file in the root directory:
+
+```env
+SEPOLIA_RPC=your_rpc_url_here
+PRIVATE_KEY=your_private_key_here
+ETHERSCAN_API_KEY=your_api_key_here
+```
 
 ## Getting Started 👩‍💻
 
