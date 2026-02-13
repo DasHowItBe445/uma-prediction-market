@@ -64,6 +64,11 @@ export function MarketForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (Number(form.reward) < 0 || Number(form.requiredBond) < 0) {
+      toast.error("Invalid amount");
+      return;
+    }    
+
     if (!isValid || !account) return;
 
     setShowModal(true);
@@ -161,7 +166,7 @@ export function MarketForm() {
               htmlFor="reward"
               className="text-sm font-medium text-foreground"
             >
-              Reward Amount (ETH)
+              Reward Amount (Token)
             </Label>
 
             <Input
@@ -181,7 +186,7 @@ export function MarketForm() {
               htmlFor="requiredBond"
               className="text-sm font-medium text-foreground"
             >
-              Required Bond (ETH)
+              Required Bond (Token)
             </Label>
 
             <Input

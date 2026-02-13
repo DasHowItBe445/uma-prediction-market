@@ -31,10 +31,10 @@ interface MarketDetailPageProps {
 
 export default function MarketDetailPage({ params }: MarketDetailPageProps) {
   const { id } = use(params);
-  const marketId = Number.parseInt(id, 10);
+  const marketId = id;
   const { account } = useWeb3();
   const {
-    getMarket,
+    getMarketDetails,
     createOutcomeTokens,
     assertMarket,
     redeemOutcomeTokens,
@@ -57,16 +57,16 @@ export default function MarketDetailPage({ params }: MarketDetailPageProps) {
       if (!account) return;
       setLoading(true);
       try {
-        const data = await getMarket(marketId);
+        const data = await getMarketDetails(marketId);
         setMarket(data);
-      } catch {
-        // market not found
+      } catch (err) {
+        console.error("Failed to load market", err);
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, [account, marketId, getMarket]);
+  }, [account, marketId, getMarketDetails]);
 
   const copyContractAddress = () => {
     navigator.clipboard.writeText(CONTRACT_ADDRESS);
@@ -81,7 +81,7 @@ export default function MarketDetailPage({ params }: MarketDetailPageProps) {
     setModalDesc("Creating outcome tokens for this market.");
     setShowModal(true);
     try {
-      await createOutcomeTokens(marketId);
+      await createOutcomeTokens(marketId, "1");
       toast.success("Outcome tokens minted!");
       const data = await getMarket(marketId);
       setMarket(data);
@@ -109,7 +109,7 @@ export default function MarketDetailPage({ params }: MarketDetailPageProps) {
     setModalDesc("Redeeming your outcome tokens.");
     setShowModal(true);
     try {
-      await redeemOutcomeTokens(marketId);
+      await redeemOutcomeTokens(marketId, "1");
       toast.success("Tokens redeemed!");
       const data = await getMarket(marketId);
       setMarket(data);
@@ -220,7 +220,7 @@ export default function MarketDetailPage({ params }: MarketDetailPageProps) {
               <div className="flex items-center gap-1.5">
                 <Coins className="h-3.5 w-3.5 text-primary" />
                 <span className="text-sm font-semibold text-foreground">
-                  {formatEther(market.reward)} ETH
+                {market.reward} USDC
                 </span>
               </div>
             </div>

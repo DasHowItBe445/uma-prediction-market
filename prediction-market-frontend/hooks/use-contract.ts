@@ -1,11 +1,31 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { parseEther, formatEther } from "ethers";
 import { useWeb3 } from "@/context/web3-provider";
 import { getERC20Contract } from "@/lib/erc20";
 import { CONTRACT_ADDRESS } from "@/lib/contract";
 import type { MarketData } from "@/lib/contract";
+import { parseUnits, formatUnits } from "ethers";
+
+let tokenDecimalsCache: number | null = null;
+
+async function resolveDecimals(
+  contract: any,
+  signer: any
+): Promise<number> {
+  if (tokenDecimalsCache !== null) return tokenDecimalsCache;
+
+  const tokenAddr = await contract.currency();
+  const token = getERC20Contract(tokenAddr, signer);
+
+  const d = await token.decimals();
+
+  tokenDecimalsCache = Number(d);
+
+  return tokenDecimalsCache;
+}
+
+let tokenDecimals: number | null = null;
 
 export function useContract() {
   const { contract, account, signer } = useWeb3();
@@ -21,129 +41,134 @@ export function useContract() {
     setTxHash(null);
   }, []);
 
-  /* ---------------- Internal: Auto Approve ---------------- */
+/* ---------------- Token Decimals ---------------- */
 
-  const ensureAllowance = useCallback(
-    async (amountWei: bigint) => {
-      if (!contract || !signer || !account) {
-        throw new Error("Wallet not connected");
-      }
+const getTokenDecimals = useCallback(async () => {
+  if (tokenDecimals !== null) return tokenDecimals;
 
-      if (amountWei === 0n) return;
+  if (!contract || !signer) {
+    throw new Error("Not connected");
+  }
 
-      const tokenAddress: string = await contract.currency();
+  const tokenAddress = await contract.currency();
+  const token = getERC20Contract(tokenAddress, signer);
 
-      const token = getERC20Contract(tokenAddress, signer);
+  const decimals = await token.decimals();
+  tokenDecimals = decimals;
 
-      const allowance: bigint = await token.allowance(
-        account,
-        CONTRACT_ADDRESS
-      );
+  return decimals;
+}, [contract, signer]);
 
-      console.log("Current allowance:", allowance.toString());
+/* ---------------- Internal: Auto Approve ---------------- */
 
-      if (allowance < amountWei) {
-        console.log("Approving tokens...");
+const ensureAllowance = useCallback(
+  async (needed: bigint) => {
+    if (!contract || !signer || !account) {
+      throw new Error("Wallet not connected");
+    }
 
-        const tx = await token.approve(
-          CONTRACT_ADDRESS,
-          amountWei
-        );
+    if (needed === 0n) return;
 
-        await tx.wait();
+    const tokenAddr = await contract.currency();
+    const token = getERC20Contract(tokenAddr, signer);
 
-        console.log("Approval confirmed");
-      }
-    },
-    [contract, signer, account]
-  );
+    const bal = await token.balanceOf(account);
+
+    if (bal < needed) {
+      throw new Error("Insufficient token balance");
+    }
+
+    const allowance = await token.allowance(account, CONTRACT_ADDRESS);
+
+    if (allowance < needed) {
+      const tx = await token.approve(CONTRACT_ADDRESS, needed);
+      await tx.wait();
+    }
+  },
+  [contract, signer, account]
+);
 
   /* ---------------- Initialize Market ---------------- */
 
   const initializeMarket = useCallback(
     async (
-      outcome1: string,
-      outcome2: string,
-      description: string,
+      o1: string,
+      o2: string,
+      desc: string,
       reward: string,
-      requiredBond: string
+      bond: string
     ) => {
       if (!contract || !signer || !account) {
         throw new Error("Wallet not connected");
       }
-
+  
       resetState();
       setIsLoading(true);
-
+  
       try {
-        const rewardWei = parseEther(reward);
-        const bondWei = parseEther(requiredBond);
-
-        // 1. Ensure ERC20 approval
-        await ensureAllowance(rewardWei);
-
-        // 2. Create market
+        const decimals = await resolveDecimals(contract, signer);
+  
+        const rewardWei = parseUnits(reward || "0", decimals);
+        const bondWei = parseUnits(bond || "0", decimals);
+  
+        const total = rewardWei + bondWei;
+  
+        await ensureAllowance(total);
+  
         const tx = await contract.initializeMarket(
-          outcome1,
-          outcome2,
-          description,
+          o1,
+          o2,
+          desc,
           rewardWei,
           bondWei
         );
-
+  
         setTxHash(tx.hash);
-
+  
         await tx.wait();
-
+  
         return tx.hash;
-
-      } catch (err: any) {
-        const message =
-          err?.reason ||
-          err?.message ||
-          "Transaction failed";
-
-        setError(message);
-        throw err;
-
+      } catch (e: any) {
+        setError(e?.reason || e?.message || "Transaction failed");
+        throw e;
       } finally {
         setIsLoading(false);
       }
     },
     [contract, signer, account, ensureAllowance, resetState]
-  );
+  );  
 
   /* ---------------- Create Outcome Tokens ---------------- */
 
   const createOutcomeTokens = useCallback(
-    async (marketId: string, amount: string) => {
-      if (!contract) throw new Error("Not connected");
-
+    async (id: string, amount: string) => {
+      if (!contract || !signer || !account) {
+        throw new Error("Wallet not connected");
+      }
+  
       resetState();
       setIsLoading(true);
-
+  
       try {
-        const amtWei = parseEther(amount);
-
+        const decimals = await resolveDecimals(contract, signer);
+  
+        const amtWei = parseUnits(amount, decimals);
+  
         await ensureAllowance(amtWei);
-
-        const tx = await contract.createOutcomeTokens(
-          marketId,
-          amtWei
-        );
-
+  
+        const tx = await contract.createOutcomeTokens(id, amtWei);
+  
         setTxHash(tx.hash);
-
+  
         await tx.wait();
-
+  
         return tx.hash;
-
       } finally {
         setIsLoading(false);
       }
     },
-    [contract, ensureAllowance, resetState]
-  );
+    [contract, signer, account, ensureAllowance, resetState]
+  );  
 
   /* ---------------- Assert Market ---------------- */
 
@@ -178,28 +203,32 @@ export function useContract() {
   const redeemOutcomeTokens = useCallback(
     async (marketId: string, amount: string) => {
       if (!contract) throw new Error("Not connected");
-
+  
       resetState();
       setIsLoading(true);
-
+  
       try {
+        const decimals = await getTokenDecimals();
+  
+        const amtWei = parseUnits(amount, decimals);
+  
         const tx = await contract.redeemOutcomeTokens(
           marketId,
-          parseEther(amount)
+          amtWei
         );
-
+  
         setTxHash(tx.hash);
-
+  
         await tx.wait();
-
+  
         return tx.hash;
-
+  
       } finally {
         setIsLoading(false);
       }
     },
-    [contract, resetState]
-  );
+    [contract, resetState, getTokenDecimals]
+  );  
 
   /* ---------------- Settle ---------------- */
 
@@ -228,41 +257,87 @@ export function useContract() {
 
   /* ---------------- Reads ---------------- */
 
-  const getMarket = useCallback(
-    async (id: string): Promise<MarketData | null> => {
-      if (!contract) return null;
+const getAllMarketIds = useCallback(async (): Promise<string[]> => {
+  if (!contract) return [];
 
-      try {
-        return await contract.getMarket(id);
-      } catch {
-        return null;
-      }
-    },
-    [contract]
-  );
+  try {
+    return await contract.getAllMarkets();
+  } catch {
+    return [];
+  }
+}, [contract]);
 
-  const getMarketCount = useCallback(async (): Promise<number> => {
-    if (!contract) return 0;
+const getMarketDetails = useCallback(
+  async (id: string) => {
+    if (!contract || !signer) return null;
 
     try {
-      const count = await contract.marketCount();
-      return Number(count);
+      const data = await contract.getMarketDetails(id);
+
+      const decimals = await resolveDecimals(contract, signer);
+
+      return {
+        id,
+        outcome1: data[0],
+        outcome2: data[1],
+        description: data[2],
+        reward: formatUnits(data[3], decimals),
+        requiredBond: formatUnits(data[4], decimals),
+        outcome1Token: data[5],
+        outcome2Token: data[6],
+        resolved: data[7],
+      };
     } catch {
-      return 0;
+      return null;
     }
-  }, [contract]);
+  },
+  [contract, signer]
+);
 
-  const fetchAllMarkets = useCallback(async (): Promise<MarketData[]> => {
-    const count = await getMarketCount();
-    const markets: MarketData[] = [];
+const getAssertionForMarket = useCallback(
+  async (id: string): Promise<string | null> => {
+    if (!contract) return null;
 
-    for (let i = 0; i < count; i++) {
-      const market = await getMarket(i.toString());
-      if (market) markets.push(market);
+    try {
+      return await contract.getAssertionForMarket(id);
+    } catch {
+      return null;
     }
+  },
+  [contract, getTokenDecimals]
+);
+
+const fetchAllMarkets = useCallback(async () => {
+  if (!contract) return [];
+
+  try {
+    const ids: string[] = await contract.getAllMarkets();
+
+    const markets = await Promise.all(
+      ids.map(async (id: string) => {
+        const data = await contract.getMarketDetails(id);
+
+        return {
+          id,
+          outcome1: data[0],
+          outcome2: data[1],
+          description: data[2],
+          reward: data[3],
+          requiredBond: data[4],
+          outcome1Token: data[5],
+          outcome2Token: data[6],
+          resolved: data[7],
+        };
+      })
+    );
 
     return markets;
-  }, [getMarketCount, getMarket]);
+
+  } catch (err) {
+    console.error("Failed to fetch markets", err);
+    return [];
+  }
+}, [contract]);
 
   /* ---------------- Export ---------------- */
 
@@ -271,17 +346,17 @@ export function useContract() {
     error,
     txHash,
     account,
-
+  
     initializeMarket,
     createOutcomeTokens,
     assertMarket,
     redeemOutcomeTokens,
     settleOutcomeTokens,
-
-    getMarket,
-    getMarketCount,
+  
+    getAllMarketIds,
+    getMarketDetails,
+    getAssertionForMarket,
     fetchAllMarkets,
-
-    formatEther,
-  };
+  
+  };  
 }
