@@ -30,7 +30,8 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             "TeamB",
             "TeamA vs TeamB match",
             0,
-            0
+            0,
+            7 days
         );
 
         defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
@@ -59,6 +60,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             ,
             ,
             ,
+            ,
 
         ) = market.markets(marketId);
 
@@ -75,7 +77,8 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             "TeamB",
             "TeamA vs TeamB match",
             0,
-            0
+            0,
+            7 days
         );
 
         defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
@@ -113,6 +116,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             ,
             ,
             ,
+            ,
 
         ) = market.markets(marketId);
 
@@ -130,7 +134,8 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             "TeamB",
             "TeamA vs TeamB match",
             0,
-            0
+            0,
+            7 days
         );
 
         defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
@@ -179,6 +184,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             ,
             ,
             ,
+            ,
 
         ) = market.markets(marketId);
 
@@ -191,10 +197,10 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
     function test_TwoMarkets_IsolatedResolution() public {
 
         bytes32 marketA =
-            market.initializeMarket("Yes", "No", "Rain", 0, 0);
+            market.initializeMarket("Yes", "No", "Rain", 0, 0, 7 days);
 
         bytes32 marketB =
-            market.initializeMarket("Up", "Down", "BTC", 0, 0);
+            market.initializeMarket("Up", "Down", "BTC", 0, 0, 7 days);
 
         defaultCurrency.allocateTo(TestAddress.account1, 2000 ether);
 
@@ -223,6 +229,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             ,
             ,
             ,
+            ,
 
         ) = market.markets(marketA);
 
@@ -230,6 +237,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             bool rB,
             ,
             bytes32 fB,
+            ,
             ,
             ,
             ,
@@ -251,7 +259,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
     function test_FakeAssertion_LosesBond() public {
 
         bytes32 id =
-            market.initializeMarket("Win", "Lose", "Match", 0, 0);
+            market.initializeMarket("Win", "Lose", "Match", 0, 0, 7 days);
 
         defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
         defaultCurrency.allocateTo(TestAddress.account2, 1000 ether);
@@ -278,7 +286,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
 
         assertFalse(result);
 
-        (bool resolved,,,,,,,,,) = market.markets(id);
+        (bool resolved,,,,,,,,,,) = market.markets(id);
 
         assertFalse(resolved);
     }
@@ -288,7 +296,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
     function test_Payout_TeamAWins() public {
 
         bytes32 id =
-            market.initializeMarket("TeamA", "TeamB", "Final", 0, 0);
+            market.initializeMarket("TeamA", "TeamB", "Final", 0, 0, 7 days);
 
         defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
 
@@ -326,7 +334,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
     function test_NoDoublePayout() public {
 
         bytes32 id =
-            market.initializeMarket("Yes", "No", "Test", 0, 0);
+            market.initializeMarket("Yes", "No", "Test", 0, 0, 7 days);
 
         defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
 
@@ -358,7 +366,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
     function test_CannotSettleBeforeResolved() public {
 
     bytes32 id =
-        market.initializeMarket("Yes","No","Test",0,0);
+        market.initializeMarket("Yes","No","Test",0,0, 7 days);
 
     defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
 
@@ -375,7 +383,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
 function test_NoAssertAfterResolved() public {
 
     bytes32 id =
-        market.initializeMarket("Yes","No","Test",0,0);
+        market.initializeMarket("Yes","No","Test",0,0, 7 days);
 
     defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
 
@@ -402,7 +410,7 @@ function test_NoAssertAfterResolved() public {
 function test_NoMintAfterResolved() public {
 
     bytes32 id =
-        market.initializeMarket("Yes","No","Test",0,0);
+        market.initializeMarket("Yes","No","Test",0,0, 7 days);
 
     defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
 
@@ -429,7 +437,7 @@ function test_NoMintAfterResolved() public {
 function test_BondIsLostOnFalseAssertion() public {
 
     bytes32 id =
-        market.initializeMarket("Yes","No","Test",0,0);
+        market.initializeMarket("Yes","No","Test",0,0, 7 days);
 
     defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
     defaultCurrency.allocateTo(TestAddress.account2, 1000 ether);

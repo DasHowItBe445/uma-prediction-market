@@ -43,7 +43,8 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
     bytes public constant unresolvable = "Unresolvable";
 
-    uint256 private marketNonce;    
+    uint256 private marketNonce;
+    bytes32[] public marketIds;
 
     /* ---------------- Structs ---------------- */
 
@@ -57,6 +58,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
         uint256 reward;
         uint256 requiredBond;
+        uint256 expirationTime;
 
         bytes outcome1;
         bytes outcome2;
@@ -72,7 +74,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
     mapping(bytes32 => Market) public markets;
     mapping(bytes32 => AssertedMarket) public assertedMarkets;
-    uint256 public marketCount;
+    mapping(bytes32 => bytes32) public marketToAssertion;
 
     /* ---------------- Events ---------------- */
 
@@ -123,11 +125,15 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     address _currency,
     address _oo
 ) {
+    require(_finder != address(0), "Invalid finder");
+    require(_currency != address(0), "Invalid currency");
+    require(_oo != address(0), "Invalid oracle");
+
     finder = _finder;
     currency = IERC20(_currency);
+    
     oo = OptimisticOracleV3Interface(_oo);
-
-    defaultIdentifier = bytes32("ASSERT_TRUTH");
+    defaultIdentifier = OptimisticOracleV3Interface(_oo).defaultIdentifier();
 
     factory = new TokenFactory();
     treasury = msg.sender;
@@ -169,7 +175,8 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     string memory o2,
     string memory d,
     uint256 reward,
-    uint256 bond
+    uint256 bond,
+    uint256 duration
 )
     external
     active
@@ -178,6 +185,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     require(bytes(o1).length > 0, "Empty first outcome");
     require(bytes(o2).length > 0, "Empty second outcome");
     require(bytes(d).length > 0, "Empty description");
+    require(duration >= 1 days, "Too short");
 
     require(
         keccak256(bytes(o1)) != keccak256(bytes(o2)),
@@ -221,18 +229,21 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
         t2,
         reward,
         bond,
+        block.timestamp + duration,
         bytes(o1),
         bytes(o2),
         bytes(d)
     );
 
     if (reward > 0) {
-        currency.safeTransferFrom(
-            msg.sender,
-            address(this),
-            reward
-        );
-    }
+    currency.safeTransferFrom(
+        msg.sender,
+        address(this),
+        reward
+    );
+}
+
+    marketIds.push(id);
 
     emit MarketInitialized(id);
 }
@@ -278,6 +289,11 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
         );
 
         require(!m.resolved, "Assertion active");
+
+        require(
+          block.timestamp < m.expirationTime,
+            "Market expired"
+        );
 
         require(
             m.assertedOutcomeId == bytes32(0),
@@ -333,6 +349,8 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
             bytes32(0)
         );
 
+        marketToAssertion[id] = aid;
+
         assertedMarkets[aid] =
             AssertedMarket(msg.sender, id);
 
@@ -383,12 +401,27 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
         }
 
         delete assertedMarkets[aid];
+        delete marketToAssertion[a.marketId];
     }
 
-    function assertionDisputedCallback(bytes32)
-        external
-        override
-    {}
+    function assertionDisputedCallback(bytes32 aid)
+    external
+    override
+{
+    require(msg.sender == address(oo), "Not oracle");
+
+    AssertedMarket memory a =
+        assertedMarkets[aid];
+
+    Market storage m =
+        markets[a.marketId];
+
+    // Reset so new assertions allowed
+    m.assertedOutcomeId = bytes32(0);
+
+    // Remove mapping
+    delete marketToAssertion[a.marketId];
+}
 
     /**
     * ------------------------------------------------------------
@@ -439,33 +472,33 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     /* ---------------- Tokens ---------------- */
 
     function createOutcomeTokens(
-        bytes32 id,
-        uint256 amt
-    )
-        external
-        active
-    {
-        Market storage m = markets[id];
+    bytes32 id,
+    uint256 amt
+)
+    external
+    active
+{
+    Market storage m = markets[id];
 
-        require(address(m.outcome1Token) != address(0), "Market does not exist");
-        require(!m.resolved, "Market already resolved");
+    require(address(m.outcome1Token) != address(0), "Market does not exist");
+    require(!m.resolved, "Market already resolved");
 
-        currency.safeTransferFrom(
-            msg.sender,
-            address(this),
-            amt
-        );
+    // Only ERC20 (USDC) payments
+    currency.safeTransferFrom(
+        msg.sender,
+        address(this),
+        amt
+    );
 
-        m.outcome1Token.mint(msg.sender, amt);
-        m.outcome2Token.mint(msg.sender, amt);
+    m.outcome1Token.mint(msg.sender, amt);
+    m.outcome2Token.mint(msg.sender, amt);
 
-        emit OutcomeTokensCreated(
-            id,
-            msg.sender,
-            amt
-        );
-
-    }
+    emit OutcomeTokensCreated(
+        id,
+        msg.sender,
+        amt
+    );
+}
 
     /**
      * @notice Redeem outcome tokens before market resolution.
@@ -550,4 +583,92 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     {
         return markets[id];
     }
+
+    function getAllMarkets() external view returns (bytes32[] memory) {
+        return marketIds;
+    }
+
+    function getMarketStatus(bytes32 id)
+        external
+        view
+        returns (
+            bool resolved,
+            bytes32 assertedOutcome,
+            bytes32 finalOutcome
+        )
+    {
+        Market memory m = markets[id];
+        return (m.resolved, m.assertedOutcomeId, m.finalOutcomeId);
+    }
+
+    function getMarketDetails(bytes32 id)
+    external
+    view
+    returns (
+        string memory outcome1,
+        string memory outcome2,
+        string memory description,
+        uint256 reward,
+        uint256 requiredBond,
+        address outcome1Token,
+        address outcome2Token,
+        bool resolved
+    )
+{
+    Market memory m = markets[id];
+
+    return (
+        string(m.outcome1),
+        string(m.outcome2),
+        string(m.description),
+        m.reward,
+        m.requiredBond,
+        address(m.outcome1Token),
+        address(m.outcome2Token),
+        m.resolved
+    );
+}
+    function getAssertionForMarket(bytes32 marketId)
+    external
+    view
+    returns (bytes32)
+{
+    return marketToAssertion[marketId];
+}
+    function getAssertionData(bytes32 marketId)
+    external
+    view
+    returns (
+        bytes32 assertionId,
+        bool settled,
+        bool disputed,
+        uint256 expirationTime
+    )
+{
+    assertionId = marketToAssertion[marketId];
+
+    if (assertionId == bytes32(0)) {
+        return (bytes32(0), false, false, 0);
+    }
+
+    OptimisticOracleV3Interface.Assertion memory a =
+        oo.getAssertion(assertionId);
+
+    settled = a.settled;
+    expirationTime = a.expirationTime;
+
+    // Disputed if expired but not settled
+    disputed =
+        block.timestamp > a.expirationTime &&
+        !a.settled;
+    }
+
+    function settleMarket(bytes32 marketId) external {
+    bytes32 aid = marketToAssertion[marketId];
+
+    require(aid != bytes32(0), "No active assertion");
+
+    oo.settleAssertion(aid);
+}
+
 }

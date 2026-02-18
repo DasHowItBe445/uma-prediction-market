@@ -63,7 +63,7 @@ contract PredictionMarketAssertionTest is PredictionMarketTestCommon {
         _fundInitializationReward();
         vm.roll(block.number + 1);
         vm.prank(TestAddress.owner);
-        bytes32 secondMarketId = predictionMarket.initializeMarket(outcome1, outcome2, description, reward, 0);
+        bytes32 secondMarketId = predictionMarket.initializeMarket(outcome1, outcome2, description, reward, 0, 7 days);
         uint256 ooBalanceBefore = defaultCurrency.balanceOf(address(optimisticOracleV3));
         uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
 

@@ -30,7 +30,7 @@ contract PredictionMarketTestCommon is CommonOptimisticOracleV3Test {
     function _initializeMarket() internal returns (bytes32) {
         _fundInitializationReward();
         vm.prank(TestAddress.owner);
-        return predictionMarket.initializeMarket(outcome1, outcome2, description, reward, requiredBond);
+        return predictionMarket.initializeMarket(outcome1, outcome2, description, reward, requiredBond, 7 days);
     }
 
     function _fundAssertionBond() internal {

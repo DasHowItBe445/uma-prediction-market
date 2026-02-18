@@ -17,16 +17,16 @@ contract PredictionMarketInitializeTest is PredictionMarketTestCommon {
     function test_RevertIf_InvalidInitializationParameters() public {
         vm.startPrank(TestAddress.owner);
         vm.expectRevert("Empty first outcome");
-        predictionMarket.initializeMarket("", outcome2, description, reward, requiredBond);
+        predictionMarket.initializeMarket("", outcome2, description, reward, requiredBond,7 days);
 
         vm.expectRevert("Empty second outcome");
-        predictionMarket.initializeMarket(outcome1, "", description, reward, requiredBond);
+        predictionMarket.initializeMarket(outcome1, "", description, reward, requiredBond, 7 days);
 
         vm.expectRevert("Outcomes are the same");
-        predictionMarket.initializeMarket(outcome1, outcome1, description, reward, requiredBond);
+        predictionMarket.initializeMarket(outcome1, outcome1, description, reward, requiredBond, 7 days);
 
         vm.expectRevert("Empty description");
-        predictionMarket.initializeMarket(outcome1, outcome2, "", reward, requiredBond);
+        predictionMarket.initializeMarket(outcome1, outcome2, "", reward, requiredBond, 7 days);
         vm.stopPrank();
     }
 
@@ -37,7 +37,8 @@ contract PredictionMarketInitializeTest is PredictionMarketTestCommon {
         outcome2,
         description,
         reward,
-        requiredBond
+        requiredBond,
+        7 days
     );
 
     _fundInitializationReward();
@@ -48,7 +49,8 @@ contract PredictionMarketInitializeTest is PredictionMarketTestCommon {
         outcome2,
         description,
         reward,
-        requiredBond
+        requiredBond,
+        7 days
     );
 
     // Same params → different IDs
@@ -58,20 +60,20 @@ contract PredictionMarketInitializeTest is PredictionMarketTestCommon {
     function test_DuplicateMarketNextBlock() public {
         vm.prank(TestAddress.owner);
         bytes32 firstMarketId =
-            predictionMarket.initializeMarket(outcome1, outcome2, description, reward, requiredBond);
+            predictionMarket.initializeMarket(outcome1, outcome2, description, reward, requiredBond,7 days);
 
         // Next block should allow initializing market with the same parameters, but different marketId.
         vm.roll(block.number + 1);
         _fundInitializationReward();
         vm.prank(TestAddress.owner);
         bytes32 secondMarketId =
-            predictionMarket.initializeMarket(outcome1, outcome2, description, reward, requiredBond);
+            predictionMarket.initializeMarket(outcome1, outcome2, description, reward, requiredBond, 7 days);
         assertFalse(firstMarketId == secondMarketId);
     }
 
     function test_RewardPulledOnInitialization() public {
         vm.prank(TestAddress.owner);
-        predictionMarket.initializeMarket(outcome1, outcome2, description, reward, requiredBond);
+        predictionMarket.initializeMarket(outcome1, outcome2, description, reward, requiredBond, 7 days);
         assertEq(defaultCurrency.balanceOf(address(predictionMarket)), reward);
     }
 }
