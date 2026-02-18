@@ -6,6 +6,7 @@ import { getERC20Contract } from "@/lib/erc20";
 import { CONTRACT_ADDRESS } from "@/lib/contract";
 import type { MarketData } from "@/lib/contract";
 import { parseUnits, formatUnits } from "ethers";
+import { ethers } from "ethers";
 
 let tokenDecimalsCache: number | null = null;
 
@@ -28,6 +29,8 @@ async function resolveDecimals(
 let tokenDecimals: number | null = null;
 
 export function useContract() {
+
+  console.log("HOOK CONTRACT:", CONTRACT_ADDRESS);
   const { contract, account, signer } = useWeb3();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -114,13 +117,16 @@ const ensureAllowance = useCallback(
         const total = rewardWei + bondWei;
   
         await ensureAllowance(total);
+
+        const duration = 7 * 24 * 60 * 60;
   
         const tx = await contract.initializeMarket(
           o1,
           o2,
           desc,
           rewardWei,
-          bondWei
+          bondWei,
+          7 * 24 * 60 * 60
         );
   
         setTxHash(tx.hash);
@@ -172,31 +178,44 @@ const ensureAllowance = useCallback(
 
   /* ---------------- Assert Market ---------------- */
 
-  const assertMarket = useCallback(
-    async (marketId: string, outcome: string) => {
-      if (!contract) throw new Error("Not connected");
+const assertMarket = useCallback(
+  async (marketId: string, outcome: string) => {
+    if (!contract || !signer) {
+      throw new Error("Not connected");
+    }
 
-      resetState();
-      setIsLoading(true);
+    resetState();
+    setIsLoading(true);
 
-      try {
-        const tx = await contract.assertMarket(
-          marketId,
-          outcome
-        );
+    try {
+      // 1️⃣ Get required bond from contract
+      const bond = await contract.getRequiredBond(marketId);
 
-        setTxHash(tx.hash);
+      // 2️⃣ Ensure USDC allowance
+      await ensureAllowance(bond);
 
-        await tx.wait();
+      // 3️⃣ Now assert
+      const tx = await contract.assertMarket(
+        marketId,
+        outcome
+      );
 
-        return tx.hash;
+      setTxHash(tx.hash);
 
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [contract, resetState]
-  );
+      await tx.wait();
+
+      return tx.hash;
+
+    } catch (e: any) {
+      setError(e?.reason || e?.message || "Assertion failed");
+      throw e;
+
+    } finally {
+      setIsLoading(false);
+    }
+  },
+  [contract, signer, ensureAllowance, resetState]
+);
 
   /* ---------------- Redeem ---------------- */
 
@@ -339,23 +358,93 @@ const fetchAllMarkets = useCallback(async () => {
   }
 }, [contract]);
 
+const getTokenBalance = useCallback(async (): Promise<string> => {
+  if (!contract || !signer || !account) return "0";
+
+  const tokenAddress = await contract.currency();
+  const token = getERC20Contract(tokenAddress, signer);
+
+  const decimals = await getTokenDecimals();
+
+  const bal = await token.balanceOf(account);
+
+  return formatUnits(bal, decimals);
+}, [contract, signer, account, getTokenDecimals]);
+
+const getAssertionDetails = useCallback(
+  async (assertionId: string) => {
+    if (!contract) return null;
+
+    try {
+      const oo = await contract.oo(); // oracle address
+
+      const oracle = new ethers.Contract(
+        oo,
+        [
+          "function getAssertion(bytes32) view returns (tuple(address asserter, uint64 expirationTime, bool settled, bool disputed, bool resolved))"
+        ],
+        signer
+      );
+
+      console.log("USING CONTRACT:", CONTRACT_ADDRESS);
+
+      return await oracle.getAssertion(assertionId);
+
+    } catch (e) {
+      console.error("Assertion fetch failed", e);
+      return null;
+    }
+  },
+  [contract, signer]
+);
+const disputeAssertion = useCallback(
+  async (assertionId: string) => {
+    if (!contract || !signer) throw new Error("Not connected");
+
+    const ooAddr = await contract.oo();
+
+    const oracle = new ethers.Contract(
+      ooAddr,
+      [
+        "function disputeAssertion(bytes32,address) external"
+      ],
+      signer
+    );
+
+    const tx = await oracle.disputeAssertion(
+      assertionId,
+      account
+    );
+
+    await tx.wait();
+
+    return tx.hash;
+  },
+  [contract, signer, account]
+);
+
+
   /* ---------------- Export ---------------- */
 
   return {
+    contract,
     isLoading,
     error,
     txHash,
     account,
-  
+    resetState,  
     initializeMarket,
     createOutcomeTokens,
     assertMarket,
     redeemOutcomeTokens,
     settleOutcomeTokens,
+
+    getTokenBalance,
   
     getAllMarketIds,
     getMarketDetails,
     getAssertionForMarket,
+    getAssertionDetails,
     fetchAllMarkets,
   
   };  

@@ -23,8 +23,7 @@ interface FormData {
 export function MarketForm() {
   const { account } = useWeb3();
 
-  // ❌ Removed resetState (it doesn't exist)
-  const { initializeMarket, isLoading, error, txHash } = useContract();
+  const { initializeMarket, getTokenBalance, isLoading, error, txHash } = useContract();
 
   const [showModal, setShowModal] = useState(false);
 
@@ -70,6 +69,13 @@ export function MarketForm() {
     }    
 
     if (!isValid || !account) return;
+
+    const balance = await getTokenBalance();
+
+if (Number(form.reward) > Number(balance)) {
+  toast.error("Insufficient token balance");
+  return;
+}
 
     setShowModal(true);
 
