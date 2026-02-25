@@ -41,6 +41,7 @@
       createOutcomeTokens,
       assertMarket,
       redeemOutcomeTokens,
+      settleMarket,
       settleOutcomeTokens,
       isLoading,
       error,
@@ -80,6 +81,8 @@ if (assertion &&
 }
           console.log("Assertion status:", assertion);
           setMarket(data);
+        } else {
+          setAssertionDetails(null); 
         } catch (err) {
           console.error("Failed to load market", err);
         } finally {
@@ -129,6 +132,31 @@ if (assertion &&
     // ------------------------------------------------------------------
     // Action handlers
     // ------------------------------------------------------------------
+    
+    const handleDispute = async () => {
+      if (!assertionId) {
+        toast.error("No active assertion");
+        return;
+      }
+    
+      setModalTitle("Disputing Assertion");
+      setModalDesc("Challenging the asserted outcome.");
+      setShowModal(true);
+    
+      try {
+        await disputeAssertion(assertionId);
+    
+        toast.success("Assertion disputed!");
+    
+        const details = await getAssertionDetails(assertionId);
+        setAssertionDetails(details);
+    
+      } catch (e: any) {
+        console.error(e);
+        toast.error(e?.reason || "Dispute failed");
+      }
+    };
+
     const handleMint = async () => {
       setModalTitle("Minting Outcome Tokens");
       setModalDesc("Creating outcome tokens for this market.");
@@ -145,17 +173,35 @@ if (assertion &&
 
     const handleAssert = async (outcome: string) => {
       setModalTitle("Asserting Outcome");
-      setModalDesc(`Asserting "${outcome}" as the market result via UMA Oracle.`);
+      setModalDesc(`Asserting "${outcome}" as the market result.`);
       setShowModal(true);
+    
       try {
         await assertMarket(marketId, outcome);
+    
         toast.success("Outcome asserted!");
+    
+        // 🔥 REFRESH EVERYTHING
+        const assertion = await getAssertionForMarket(marketId);
+        setAssertionId(assertion);
+    
+        if (
+          assertion &&
+          assertion !==
+            "0x0000000000000000000000000000000000000000000000000000000000000000"
+        ) {
+          const details = await getAssertionDetails(assertion);
+          setAssertionDetails(details);
+        }
+    
         const data = await getMarketDetails(marketId);
         setMarket(data);
-      } catch {
-        toast.error("Failed to assert outcome");
+    
+      } catch (e: any) {
+        console.error(e);
+        toast.error(e?.reason || "Failed to assert outcome");
       }
-    };
+    };    
 
     const handleRedeem = async () => {
       setModalTitle("Redeeming Tokens");
@@ -172,18 +218,44 @@ if (assertion &&
     };
 
     const handleSettle = async () => {
-      setModalTitle("Settling Market");
-      setModalDesc("Settling outcome tokens based on oracle resolution.");
-      setShowModal(true);
-      try {
-        await settleOutcomeTokens(marketId);
-        toast.success("Market settled!");
-        const data = await getMarketDetails(marketId);
-        setMarket(data);
-      } catch {
-        toast.error("Failed to settle market");
+      if (!assertionId) {
+        toast.error("No active assertion");
+        return;
       }
-    };
+    
+      setModalTitle("Resolving Market");
+      setModalDesc("Triggering oracle settlement.");
+      setShowModal(true);
+    
+      try {
+        await settleMarket(marketId);
+    
+        toast.success("Market resolved!");
+    
+        const updated = await getMarketDetails(marketId);
+        setMarket(updated);
+    
+        const newAssertion = await getAssertionForMarket(marketId);
+    
+        if (
+          newAssertion &&
+          newAssertion !==
+            "0x0000000000000000000000000000000000000000000000000000000000000000"
+        ) {
+          setAssertionId(newAssertion);
+    
+          const details = await getAssertionDetails(newAssertion);
+          setAssertionDetails(details);
+        } else {
+          setAssertionId(null);
+          setAssertionDetails(null);
+        }
+    
+      } catch (e: any) {
+        console.error(e);
+        toast.error(e?.reason || "Settlement failed");
+      }
+    };  
 
     const handleCloseModal = () => {
       setShowModal(false);
@@ -225,23 +297,28 @@ if (assertion &&
 
     const status = market.resolved ? "resolved" : "active";
 
-    function getAssertionState(details: any) {
+    const oracleState = assertionDetails
+      ? getAssertionState(assertionDetails, account)
+      : "NO_ASSERTION";
+
+    const isAsserter =
+      assertionDetails &&
+      account &&
+      assertionDetails.asserter?.toLowerCase() === account.toLowerCase();
+
+    function getAssertionState(details: any, account: string | null) {
       if (!details) return "NO_ASSERTION";
     
       const now = Math.floor(Date.now() / 1000);
       const expiry = Number(details.expirationTime);
     
-      if (details.settled) {
-        return "SETTLED";
-      }
+      if (details.settled) return "SETTLED";
     
-      if (now < expiry) {
-        return "LIVENESS_PERIOD";
-      }
+      if (details.disputed) return "DISPUTED";
     
-      if (now >= expiry && !details.settled) {
-        return "READY_TO_SETTLE";
-      }
+      if (now < expiry) return "LIVENESS";
+    
+      if (now >= expiry) return "READY_TO_SETTLE";
     
       return "UNKNOWN";
     }        
@@ -339,7 +416,16 @@ if (assertion &&
     </h3>
 
     <p className="text-sm">
-      Status: {getAssertionState(assertionDetails)}
+      Status: {oracleState}
+      <p className="text-xs text-muted-foreground">
+        Asserter: {assertionDetails.asserter}
+      </p>
+
+      {assertionDetails.disputed && (
+        <p className="text-xs text-red-400">
+          ⚠ This assertion is disputed
+        </p>
+      )}
     </p>
 
     <p className="text-sm text-muted-foreground">
@@ -439,15 +525,38 @@ if (assertion &&
                 Redeem Tokens
               </Button>
 
-              <Button
-                onClick={handleSettle}
-                disabled={isLoading || !assertionDetails || getAssertionState(assertionDetails) !== "READY_TO_SETTLE"}
-                variant="outline"
-                className="gap-2 bg-transparent justify-start sm:col-span-2"
-              >
-                <Shield className="h-4 w-4 text-primary" />
-                Settle Market
-              </Button>
+              {/* Dispute Button */}
+{assertionDetails &&
+  oracleState === "LIVENESS" &&
+  !isAsserter && (
+
+  <Button
+    onClick={handleDispute}
+    disabled={isLoading}
+    variant="outline"
+    className="gap-2 bg-transparent justify-start"
+  >
+    <Ban className="h-4 w-4 text-red-400" />
+    Dispute Assertion
+  </Button>
+)}
+
+<Button
+  onClick={handleSettle}
+  disabled={
+    isLoading ||
+    !assertionDetails ||
+    !(
+      oracleState === "READY_TO_SETTLE" ||
+      (oracleState === "DISPUTED" && assertionDetails.settled)
+    )
+  }
+  variant="outline"
+  className="gap-2 bg-transparent justify-start sm:col-span-2"
+>
+  <Shield className="h-4 w-4 text-primary" />
+  Settle Market
+</Button>
             </div>
           </div>
         </div>

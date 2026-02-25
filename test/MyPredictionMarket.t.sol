@@ -61,6 +61,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             ,
             ,
             ,
+            ,
 
         ) = market.markets(marketId);
 
@@ -110,6 +111,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             bool resolved,
             bytes32 asserted,
             bytes32 finalOutcome,
+            ,
             ,
             ,
             ,
@@ -185,6 +187,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             ,
             ,
             ,
+            ,
 
         ) = market.markets(marketId);
 
@@ -230,6 +233,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             ,
             ,
             ,
+            ,
 
         ) = market.markets(marketA);
 
@@ -237,6 +241,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
             bool rB,
             ,
             bytes32 fB,
+            ,
             ,
             ,
             ,
@@ -286,7 +291,7 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
 
         assertFalse(result);
 
-        (bool resolved,,,,,,,,,,) = market.markets(id);
+        (bool resolved,,,,,,,,,,,) = market.markets(id);
 
         assertFalse(resolved);
     }

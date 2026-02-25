@@ -24,7 +24,6 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
         locked = 1;
     }
 
-
     /* ---------------- Storage ---------------- */
 
     address public treasury;
@@ -39,7 +38,9 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
     bytes32 public immutable defaultIdentifier;
 
-    uint64 public constant assertionLiveness = 7200;
+    uint64 public constant assertionLiveness = 3600;
+
+    uint256 public constant DISPUTE_EXTENSION = 2 days;
 
     bytes public constant unresolvable = "Unresolvable";
 
@@ -50,6 +51,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
     struct Market {
         bool resolved;
+        
         bytes32 assertedOutcomeId;
         bytes32 finalOutcomeId;
 
@@ -63,6 +65,8 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
         bytes outcome1;
         bytes outcome2;
         bytes description;
+
+        string winningOutcome;
     }
 
     struct AssertedMarket {
@@ -75,6 +79,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     mapping(bytes32 => Market) public markets;
     mapping(bytes32 => AssertedMarket) public assertedMarkets;
     mapping(bytes32 => bytes32) public marketToAssertion;
+    mapping(bytes32 => bytes32[]) public marketAssertions;
 
     /* ---------------- Events ---------------- */
 
@@ -118,7 +123,6 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     }
 
     /* ---------------- Constructor ---------------- */
-    // ⚠️ MUST stay at 3 args (tests depend on this)
 
     constructor(
     address _finder,
@@ -138,7 +142,6 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     factory = new TokenFactory();
     treasury = msg.sender;
 }
-
 
     /* ---------------- Admin ---------------- */
 
@@ -192,7 +195,6 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
         "Outcomes are the same"
     );
 
-    // Robust unique ID
     id = keccak256(
         abi.encode(
             msg.sender,
@@ -232,7 +234,8 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
         block.timestamp + duration,
         bytes(o1),
         bytes(o2),
-        bytes(d)
+        bytes(d),
+        " "
     );
 
     if (reward > 0) {
@@ -288,7 +291,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
             "Market does not exist"
         );
 
-        require(!m.resolved, "Assertion active");
+        require(!m.resolved, "Market resolved");
 
         require(
           block.timestamp < m.expirationTime,
@@ -350,6 +353,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
         );
 
         marketToAssertion[id] = aid;
+        marketAssertions[id].push(aid);
 
         assertedMarkets[aid] =
             AssertedMarket(msg.sender, id);
@@ -383,25 +387,19 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
             m.resolved = true;
             m.finalOutcomeId = m.assertedOutcomeId;
 
-            if (m.reward > 0) {
-                currency.safeTransfer(
-                    a.asserter,
-                    m.reward
-                );
+            if (m.finalOutcomeId == keccak256(m.outcome1)) {
+                m.winningOutcome = string(m.outcome1);
             }
-
+            else if (m.finalOutcomeId == keccak256(m.outcome2)) {
+                m.winningOutcome = string(m.outcome2);
+            }
+            else {
+                m.winningOutcome = "Unresolvable";
+            }
+            
             emit MarketResolved(a.marketId);
-        } else {
-            m.assertedOutcomeId = bytes32(0);
-
-            emit AssertionRejected(
-                a.marketId,
-                aid
-                );
         }
 
-        delete assertedMarkets[aid];
-        delete marketToAssertion[a.marketId];
     }
 
     function assertionDisputedCallback(bytes32 aid)
@@ -419,8 +417,9 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     // Reset so new assertions allowed
     m.assertedOutcomeId = bytes32(0);
 
-    // Remove mapping
-    delete marketToAssertion[a.marketId];
+    m.expirationTime += DISPUTE_EXTENSION;
+
+    emit AssertionRejected(a.marketId, aid);
 }
 
     /**
@@ -668,7 +667,70 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
     require(aid != bytes32(0), "No active assertion");
 
-    oo.settleAssertion(aid);
+    OptimisticOracleV3Interface.Assertion memory a =
+        oo.getAssertion(aid);
+
+    require(
+        a.expirationTime > 0,
+        "Invalid assertion"
+    );
+    require(
+        block.timestamp >= a.expirationTime,
+        "Still in liveness"
+    );
+    if (!a.settled) {
+        oo.settleAssertion(aid);
+    }
+    }
+    function getMarketAssertions(bytes32 id)
+    external
+    view
+    returns (bytes32[] memory)
+    {
+    return marketAssertions[id];
+    }
+
+    function isResolved(bytes32 id)
+    external
+    view
+    returns (bool)
+{
+    return markets[id].resolved;
+}
+
+function getWinningOutcome(bytes32 id)
+    external
+    view
+    returns (string memory)
+{
+    require(markets[id].resolved, "Market not resolved");
+    return markets[id].winningOutcome;
+}
+
+function getMarketSummary(bytes32 id)
+    external
+    view
+    returns (
+        bool resolved,
+        bool active,
+        string memory outcome1,
+        string memory outcome2,
+        string memory winner,
+        uint256 expiry
+    )
+{
+    Market memory m = markets[id];
+
+    resolved = m.resolved;
+    active =
+        !m.resolved &&
+        block.timestamp < m.expirationTime &&
+        m.assertedOutcomeId == bytes32(0);
+
+    outcome1 = string(m.outcome1);
+    outcome2 = string(m.outcome2);
+    winner = m.winningOutcome;
+    expiry = m.expirationTime;
 }
 
 }

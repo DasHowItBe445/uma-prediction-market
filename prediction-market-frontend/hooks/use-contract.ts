@@ -62,7 +62,7 @@ const getTokenDecimals = useCallback(async () => {
   return decimals;
 }, [contract, signer]);
 
-/* ---------------- Internal: Auto Approve ---------------- */
+/* ---------------- Internal: Auto Approve ---------------- */  
 
 const ensureAllowance = useCallback(
   async (needed: bigint) => {
@@ -178,44 +178,109 @@ const ensureAllowance = useCallback(
 
   /* ---------------- Assert Market ---------------- */
 
-const assertMarket = useCallback(
-  async (marketId: string, outcome: string) => {
+  const getUMAStore = useCallback(async (): Promise<string> => {
     if (!contract || !signer) {
       throw new Error("Not connected");
     }
+  
+    const finderAddr = await contract.finder();
+  
+    const finder = new ethers.Contract(
+      finderAddr,
+      [
+        "function getImplementationAddress(bytes32) view returns (address)"
+      ],
+      signer
+    );
+  
+    const STORE_ID = ethers.id("Store");
+  
+    return await finder.getImplementationAddress(STORE_ID);
+  }, [contract, signer]);  
 
-    resetState();
-    setIsLoading(true);
+  const ensureAllowanceFor = useCallback(
+    async (spender: string, needed: bigint) => {
+      if (!contract || !signer || !account) {
+        throw new Error("Wallet not connected");
+      }
+  
+      if (needed === 0n) return;
+  
+      const tokenAddr = await contract.currency();
+      const token = getERC20Contract(tokenAddr, signer);
+  
+      const bal = await token.balanceOf(account);
+  
+      if (bal < needed) {
+        throw new Error("Insufficient token balance");
+      }
+  
+      let allowance = await token.allowance(account, spender);
+  
+      // 🔁 Force approve if not enough
+      if (allowance < needed) {
+  
+        console.log("Approving", spender, "for", needed.toString());
+  
+        const tx = await token.approve(
+          spender,
+          ethers.MaxUint256 // 🔥 IMPORTANT
+        );
+  
+        await tx.wait();
+  
+        // 🔁 Recheck (important)
+        allowance = await token.allowance(account, spender);
+  
+        console.log("New allowance:", allowance.toString());
+  
+        if (allowance < needed) {
+          throw new Error("Approve failed");
+        }
+      }
+    },
+    [contract, signer, account]
+  );  
 
-    try {
-      // 1️⃣ Get required bond from contract
-      const bond = await contract.getRequiredBond(marketId);
-
-      // 2️⃣ Ensure USDC allowance
-      await ensureAllowance(bond);
-
-      // 3️⃣ Now assert
-      const tx = await contract.assertMarket(
-        marketId,
-        outcome
-      );
-
-      setTxHash(tx.hash);
-
-      await tx.wait();
-
-      return tx.hash;
-
-    } catch (e: any) {
-      setError(e?.reason || e?.message || "Assertion failed");
-      throw e;
-
-    } finally {
-      setIsLoading(false);
-    }
-  },
-  [contract, signer, ensureAllowance, resetState]
-);
+  const assertMarket = useCallback(
+    async (marketId: string, outcome: string) => {
+      if (!contract || !signer || !account) {
+        throw new Error("Not connected");
+      }
+  
+      resetState();
+      setIsLoading(true);
+  
+      try {
+        const market = await contract.getMarketDetails(marketId);
+  
+        const bond: bigint = market[4];
+  
+        const ooAddr = await contract.oo();
+        await ensureAllowanceFor(ooAddr, bond);
+  
+        const tx = await contract.assertMarket(
+          marketId,
+          outcome
+        );
+  
+        setTxHash(tx.hash);
+  
+        await tx.wait();
+  
+        return tx.hash;
+  
+      } catch (e: any) {
+        console.error("Assert failed:", e);
+        setError(e?.reason || e?.message || "Assertion failed");
+        throw e;
+  
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [contract, signer, account, ensureAllowanceFor, resetState]
+  );  
 
   /* ---------------- Redeem ---------------- */
 
@@ -248,6 +313,31 @@ const assertMarket = useCallback(
     },
     [contract, resetState, getTokenDecimals]
   );  
+
+  /* ---------------- Resolve Market (Oracle) ---------------- */
+
+const settleMarket = useCallback(
+  async (marketId: string) => {
+    if (!contract) throw new Error("Not connected");
+
+    resetState();
+    setIsLoading(true);
+
+    try {
+      const tx = await contract.settleMarket(marketId);
+
+      setTxHash(tx.hash);
+
+      await tx.wait();
+
+      return tx.hash;
+
+    } finally {
+      setIsLoading(false);
+    }
+  },
+  [contract, resetState]
+);
 
   /* ---------------- Settle ---------------- */
 
@@ -381,14 +471,25 @@ const getAssertionDetails = useCallback(
       const oracle = new ethers.Contract(
         oo,
         [
-          "function getAssertion(bytes32) view returns (tuple(address asserter, uint64 expirationTime, bool settled, bool disputed, bool resolved))"
+          "function getAssertion(bytes32) view returns (address,uint64,bool,bool,bool,address,address,uint256)"
         ],
         signer
       );
 
       console.log("USING CONTRACT:", CONTRACT_ADDRESS);
 
-      return await oracle.getAssertion(assertionId);
+      const result = await oracle.getAssertion(assertionId);
+
+      return {
+        asserter: result[0],
+        expirationTime: Number(result[1]),
+        settled: result[2],
+        disputed: result[3],
+        resolved: result[4],
+        disputer: result[6],
+        bond: result[7],
+      };
+
 
     } catch (e) {
       console.error("Assertion fetch failed", e);
@@ -399,30 +500,35 @@ const getAssertionDetails = useCallback(
 );
 const disputeAssertion = useCallback(
   async (assertionId: string) => {
-    if (!contract || !signer) throw new Error("Not connected");
+    if (!contract || !signer || !account)
+      throw new Error("Not connected");
 
     const ooAddr = await contract.oo();
 
+    // 🔥 Fetch bond
+    const details = await getAssertionDetails(assertionId);
+
+    if (!details) throw new Error("Assertion not found");
+
+    const bond: bigint = details.bond;
+
+    // 🔥 Ensure allowance
+    await ensureAllowanceFor(ooAddr, bond);
+
     const oracle = new ethers.Contract(
       ooAddr,
-      [
-        "function disputeAssertion(bytes32,address) external"
-      ],
+      ["function disputeAssertion(bytes32,address)"],
       signer
     );
 
-    const tx = await oracle.disputeAssertion(
-      assertionId,
-      account
-    );
+    const tx = await oracle.disputeAssertion(assertionId, account);
 
     await tx.wait();
 
     return tx.hash;
   },
-  [contract, signer, account]
+  [contract, signer, account, ensureAllowanceFor, getAssertionDetails]
 );
-
 
   /* ---------------- Export ---------------- */
 
@@ -437,7 +543,10 @@ const disputeAssertion = useCallback(
     createOutcomeTokens,
     assertMarket,
     redeemOutcomeTokens,
+    settleMarket,
     settleOutcomeTokens,
+
+    disputeAssertion,
 
     getTokenBalance,
   

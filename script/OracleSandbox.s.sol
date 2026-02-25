@@ -35,9 +35,7 @@ contract OracleSandboxScript is Script {
             uint256(100e18)
         );
 
-        defaultLiveness = uint64(
-            vm.envOr("DEFAULT_LIVENESS", uint64(7200))
-        );
+        defaultLiveness = 60;
 
         defaultCurrency = vm.envOr(
             "DEFAULT_CURRENCY",
@@ -80,53 +78,60 @@ contract OracleSandboxScript is Script {
 
         /* ---------------- Register ---------------- */
 
-        finder.changeImplementationAddress(
-            OracleInterfaces.Store,
-            address(store)
-        );
+// Register core contracts FIRST
 
-        finder.changeImplementationAddress(
-            OracleInterfaces.CollateralWhitelist,
-            address(addressWhitelist)
-        );
+finder.changeImplementationAddress(
+    OracleInterfaces.Store,
+    address(store)
+);
 
-        finder.changeImplementationAddress(
-            OracleInterfaces.IdentifierWhitelist,
-            address(identifierWhitelist)
-        );
+finder.changeImplementationAddress(
+    OracleInterfaces.CollateralWhitelist,
+    address(addressWhitelist)
+);
 
-        finder.changeImplementationAddress(
-            OracleInterfaces.Oracle,
-            address(mockOracle)
-        );
+finder.changeImplementationAddress(
+    OracleInterfaces.IdentifierWhitelist,
+    address(identifierWhitelist)
+);
 
-        addressWhitelist.addToWhitelist(defaultCurrency);
+finder.changeImplementationAddress(
+    OracleInterfaces.Oracle,
+    address(mockOracle)
+);
 
-        identifierWhitelist.addSupportedIdentifier(
-            defaultIdentifier
-        );
+// Whitelist currency + identifier
 
-        store.setFinalFee(
-            defaultCurrency,
-            FixedPoint.Unsigned(minimumBond / 2)
-        );
+addressWhitelist.addToWhitelist(defaultCurrency);
 
-        /* ---------------- OOv3 ---------------- */
+identifierWhitelist.addSupportedIdentifier(
+    defaultIdentifier
+);
 
-        OptimisticOracleV3 oo =
-            new OptimisticOracleV3(
-                finder,
-                IERC20(defaultCurrency),
-                defaultLiveness
-            );
+// Fees
 
-        console.log("OOv3:", address(oo));
+store.setFinalFee(
+    defaultCurrency,
+    FixedPoint.Unsigned(minimumBond / 2)
+);
 
-        finder.changeImplementationAddress(
-            OracleInterfaces.OptimisticOracleV3,
-            address(oo)
-        );
+/* ---------------- OOv3 ---------------- */
 
-        vm.stopBroadcast();
-    }
+OptimisticOracleV3 oo =
+    new OptimisticOracleV3(
+        finder,
+        IERC20(defaultCurrency),
+        defaultLiveness
+    );
+
+console.log("OOv3:", address(oo));
+
+// Register OOv3
+
+finder.changeImplementationAddress(
+    OracleInterfaces.OptimisticOracleV3,
+    address(oo)
+);
+
+}
 }
