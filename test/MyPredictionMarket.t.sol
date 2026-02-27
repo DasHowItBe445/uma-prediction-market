@@ -407,7 +407,7 @@ function test_NoAssertAfterResolved() public {
 
     vm.startPrank(TestAddress.account1);
 
-    vm.expectRevert("Assertion active");
+    vm.expectRevert("Assertion active or resolved");
     market.assertMarket(id,"Yes");
 
     vm.stopPrank();

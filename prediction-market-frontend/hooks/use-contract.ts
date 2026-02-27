@@ -376,6 +376,20 @@ const getAllMarketIds = useCallback(async (): Promise<string[]> => {
   }
 }, [contract]);
 
+const getOutcomeTokenBalance = useCallback(
+  async (tokenAddress: string): Promise<string> => {
+    if (!signer || !account) return "0";
+
+    const token = getERC20Contract(tokenAddress, signer);
+
+    const decimals = await token.decimals();
+    const bal = await token.balanceOf(account);
+
+    return formatUnits(bal, decimals);
+  },
+  [signer, account]
+);
+
 const getMarketDetails = useCallback(
   async (id: string) => {
     if (!contract || !signer) return null;
@@ -471,7 +485,7 @@ const getAssertionDetails = useCallback(
       const oracle = new ethers.Contract(
         oo,
         [
-          "function getAssertion(bytes32) view returns (address,uint64,bool,bool,bool,address,address,uint256)"
+          "function getAssertion(bytes32) view returns (tuple(address asserter,uint64 expirationTime,bool settled,bool disputed,address callbackRecipient,address disputer,uint256 bond,address currency))"
         ],
         signer
       );
@@ -545,6 +559,7 @@ const disputeAssertion = useCallback(
     redeemOutcomeTokens,
     settleMarket,
     settleOutcomeTokens,
+    getOutcomeTokenBalance,
 
     disputeAssertion,
 

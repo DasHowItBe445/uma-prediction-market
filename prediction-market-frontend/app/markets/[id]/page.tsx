@@ -37,6 +37,7 @@
       getMarketDetails,
       getAssertionForMarket,
       getAssertionDetails,
+      getOutcomeTokenBalance,
       disputeAssertion,
       createOutcomeTokens,
       assertMarket,
@@ -56,41 +57,66 @@
     const [modalDesc, setModalDesc] = useState("");
     const [assertionId, setAssertionId] = useState<string | null>(null);
     const [assertionDetails, setAssertionDetails] = useState<any>(null);
+    const [timeLeft, setTimeLeft] = useState<number | null>(null);
+    const [yesBalance, setYesBalance] = useState("0");
+    const [noBalance, setNoBalance] = useState("0");
 
     const hasActiveAssertion =
       assertionId &&
       assertionId !==
         "0x0000000000000000000000000000000000000000000000000000000000000000";
 
-
-    // Load market data
-    useEffect(() => {
-      async function load() {
-        if (!account) return;
-        setLoading(true);
-        try {
-          const data = await getMarketDetails(marketId);
-          const assertion = await getAssertionForMarket(marketId);
-          setAssertionId(assertion);
-
-if (assertion &&
-  assertion !==
-    "0x0000000000000000000000000000000000000000000000000000000000000000") {
-  const details = await getAssertionDetails(assertion);
-  setAssertionDetails(details);
-}
-          console.log("Assertion status:", assertion);
-          setMarket(data);
-        } else {
-          setAssertionDetails(null); 
-        } catch (err) {
-          console.error("Failed to load market", err);
-        } finally {
-          setLoading(false);
-        }
-      }
-      load();
-    }, [account, marketId, getMarketDetails, getAssertionForMarket, getAssertionDetails,]);
+        useEffect(() => {
+          async function load() {
+            if (!account) return;
+            setLoading(true);
+        
+            try {
+              const data = await getMarketDetails(marketId);
+        
+              if (!data) return;
+        
+              setMarket(data);
+        
+              //  Load token balances
+              const yes = await getOutcomeTokenBalance(data.outcome1Token);
+              const no = await getOutcomeTokenBalance(data.outcome2Token);
+        
+              setYesBalance(yes);
+              setNoBalance(no);
+        
+              const assertion = await getAssertionForMarket(marketId);
+              setAssertionId(assertion);
+        
+              if (
+                assertion &&
+                assertion !==
+                  "0x0000000000000000000000000000000000000000000000000000000000000000"
+              ) {
+                const details = await getAssertionDetails(assertion);
+                setAssertionDetails(details);
+              } else {
+                setAssertionDetails(null);
+              }
+        
+              console.log("Assertion status:", assertion);
+        
+            } catch (err) {
+              console.error("Failed to load market", err);
+            } finally {
+              setLoading(false);
+            }
+          }
+        
+          load();
+        }, [
+          account,
+          marketId,
+          getMarketDetails,
+          getAssertionForMarket,
+          getAssertionDetails,
+          getOutcomeTokenBalance,
+        ]);
 
     useEffect(() => {
       if (!assertionId) return;
@@ -116,6 +142,19 @@ if (assertion &&
     };
 
     useEffect(() => {
+      if (!assertionDetails?.expirationTime) return;
+    
+      const interval = setInterval(() => {
+        const now = Math.floor(Date.now() / 1000);
+        const diff = assertionDetails.expirationTime - now;
+    
+        setTimeLeft(diff > 0 ? diff : 0);
+      }, 1000);
+    
+      return () => clearInterval(interval);
+    }, [assertionDetails]);
+
+    useEffect(() => {
       if (!contract) return;
     
       const filter = contract.filters.MarketResolved();
@@ -129,43 +168,40 @@ if (assertion &&
       };
     }, [contract]);   
 
+    function formatTime(sec: number) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+
+  return `${h}h ${m}m ${s}s`;
+}
+
     // ------------------------------------------------------------------
     // Action handlers
     // ------------------------------------------------------------------
     
-    const handleDispute = async () => {
-      if (!assertionId) {
-        toast.error("No active assertion");
-        return;
-      }
-    
-      setModalTitle("Disputing Assertion");
-      setModalDesc("Challenging the asserted outcome.");
-      setShowModal(true);
-    
-      try {
-        await disputeAssertion(assertionId);
-    
-        toast.success("Assertion disputed!");
-    
-        const details = await getAssertionDetails(assertionId);
-        setAssertionDetails(details);
-    
-      } catch (e: any) {
-        console.error(e);
-        toast.error(e?.reason || "Dispute failed");
-      }
-    };
-
     const handleMint = async () => {
       setModalTitle("Minting Outcome Tokens");
       setModalDesc("Creating outcome tokens for this market.");
       setShowModal(true);
+    
       try {
         await createOutcomeTokens(marketId, "1");
+    
         toast.success("Outcome tokens minted!");
+    
         const data = await getMarketDetails(marketId);
-        setMarket(data);
+    
+        if (data) {
+          setMarket(data);
+    
+          const yes = await getOutcomeTokenBalance(data.outcome1Token);
+          const no = await getOutcomeTokenBalance(data.outcome2Token);
+    
+          setYesBalance(yes);
+          setNoBalance(no);
+        }
+    
       } catch {
         toast.error("Failed to mint tokens");
       }
@@ -207,11 +243,24 @@ if (assertion &&
       setModalTitle("Redeeming Tokens");
       setModalDesc("Redeeming your outcome tokens.");
       setShowModal(true);
+    
       try {
         await redeemOutcomeTokens(marketId, "1");
+    
         toast.success("Tokens redeemed!");
+    
         const data = await getMarketDetails(marketId);
-        setMarket(data);
+    
+        if (data) {
+          setMarket(data);
+    
+          const yes = await getOutcomeTokenBalance(data.outcome1Token);
+          const no = await getOutcomeTokenBalance(data.outcome2Token);
+    
+          setYesBalance(yes);
+          setNoBalance(no);
+        }
+    
       } catch {
         toast.error("Failed to redeem tokens");
       }
@@ -262,6 +311,30 @@ if (assertion &&
       resetState();
     };
 
+    const handleDispute = async () => {
+      if (!assertionId) {
+        toast.error("No active assertion");
+        return;
+      }
+    
+      setModalTitle("Disputing Assertion");
+      setModalDesc("Challenging the asserted outcome.");
+      setShowModal(true);
+    
+      try {
+        await disputeAssertion(assertionId);
+    
+        toast.success("Assertion disputed!");
+    
+        const details = await getAssertionDetails(assertionId);
+        setAssertionDetails(details);
+    
+      } catch (e: any) {
+        console.error(e);
+        toast.error(e?.reason || "Dispute failed");
+      }
+    };
+
     // ------------------------------------------------------------------
     // Loading state
     // ------------------------------------------------------------------
@@ -298,7 +371,7 @@ if (assertion &&
     const status = market.resolved ? "resolved" : "active";
 
     const oracleState = assertionDetails
-      ? getAssertionState(assertionDetails, account)
+      ? getAssertionState(assertionDetails)
       : "NO_ASSERTION";
 
     const isAsserter =
@@ -306,7 +379,7 @@ if (assertion &&
       account &&
       assertionDetails.asserter?.toLowerCase() === account.toLowerCase();
 
-    function getAssertionState(details: any, account: string | null) {
+    function getAssertionState(details: any) {
       if (!details) return "NO_ASSERTION";
     
       const now = Math.floor(Date.now() / 1000);
@@ -324,6 +397,7 @@ if (assertion &&
     }        
 
     return (
+      <>
       <div className="bg-grid min-h-[calc(100vh-64px)]">
         <div className="mx-auto max-w-4xl px-4 py-12 lg:px-8">
           {/* Back */}
@@ -415,29 +489,58 @@ if (assertion &&
       Oracle Status
     </h3>
 
-    <p className="text-sm">
-      Status: {oracleState}
-      <p className="text-xs text-muted-foreground">
-        Asserter: {assertionDetails.asserter}
-      </p>
+    {timeLeft !== null && timeLeft > 0 && (
+  <p className="text-sm text-yellow-400">
+    ⏳ Time Left: {formatTime(timeLeft)}
+  </p>
+)}
 
-      {assertionDetails.disputed && (
-        <p className="text-xs text-red-400">
-          ⚠ This assertion is disputed
-        </p>
-      )}
+    {/* Oracle State */}
+    <p className="text-sm font-medium">
+      Oracle State:{" "}
+      <span className="text-primary">
+        {getAssertionState(assertionDetails)}
+      </span>
     </p>
 
-    <p className="text-sm text-muted-foreground">
+    {/* Asserter */}
+    <p className="text-xs text-muted-foreground">
+      Asserter: {assertionDetails.asserter}
+    </p>
+
+    {/* Dispute Status */}
+    <p className="text-xs text-muted-foreground">
+      Disputed:{" "}
+      <span
+        className={
+          assertionDetails.disputed
+            ? "text-red-400"
+            : "text-emerald-400"
+        }
+      >
+        {assertionDetails.disputed ? "Yes" : "No"}
+      </span>
+    </p>
+
+    {/* Warning */}
+    {assertionDetails.disputed && (
+      <p className="text-xs text-red-400">
+        ⚠ This assertion is under dispute
+      </p>
+    )}
+
+    {/* Expiry */}
+    <p className="text-xs text-muted-foreground">
       Expires:{" "}
       {new Date(
         Number(assertionDetails.expirationTime) * 1000
       ).toLocaleString()}
     </p>
 
+    {/* Info */}
     {!assertionDetails.settled && (
       <p className="text-xs text-muted-foreground">
-        This assertion can be disputed by UMA validators if incorrect.
+        This assertion can be disputed during the liveness period.
       </p>
     )}
 
@@ -469,108 +572,69 @@ if (assertion &&
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mb-6">
             <TokenBalanceCard
               label={`${market.outcome1} Token`}
-              balance="0"
+              balance={yesBalance}
               tokenAddress={market.outcome1Token}
               variant="outcome1"
             />
             <TokenBalanceCard
               label={`${market.outcome2} Token`}
-              balance="0"
+              balance={noBalance}
               tokenAddress={market.outcome2Token}
               variant="outcome2"
             />
           </div>
 
           {/* Actions */}
-          <div className="glass rounded-xl p-6">
-            <h2 className="text-sm font-semibold text-foreground mb-4">Actions</h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Button
-                onClick={handleMint}
-                disabled={isLoading || market.resolved}
-                variant="outline"
-                className="gap-2 bg-transparent justify-start"
-              >
-                <Zap className="h-4 w-4 text-primary" />
-                Mint Outcome Tokens
-              </Button>
+<div className="glass rounded-xl p-6">
+  <h2 className="text-sm font-semibold text-foreground mb-4">
+    Actions
+  </h2>
 
-              <Button
-                onClick={() => handleAssert(market.outcome1)}
-                disabled={isLoading || market.resolved || hasActiveAssertion}
-                variant="outline"
-                className="gap-2 bg-transparent justify-start"
-              >
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                Assert: {market.outcome1}
-              </Button>
+  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
-              <Button
-                onClick={() => handleAssert(market.outcome2)}
-                disabled={isLoading || market.resolved || hasActiveAssertion}
-                variant="outline"
-                className="gap-2 bg-transparent justify-start"
-              >
-                <CheckCircle2 className="h-4 w-4 text-rose-400" />
-                Assert: {market.outcome2}
-              </Button>
+    {assertionDetails &&
+      oracleState === "LIVENESS" &&
+      !isAsserter && (
+        <Button
+          onClick={handleDispute}
+          disabled={isLoading}
+          variant="outline"
+          className="gap-2 bg-transparent justify-start"
+        >
+          <Ban className="h-4 w-4 text-red-400" />
+          Dispute Assertion
+        </Button>
+    )}
 
-              <Button
-                onClick={handleRedeem}
-                disabled={isLoading}
-                variant="outline"
-                className="gap-2 bg-transparent justify-start"
-              >
-                <RefreshCcw className="h-4 w-4 text-primary" />
-                Redeem Tokens
-              </Button>
+    <Button
+      onClick={handleSettle}
+      disabled={
+        isLoading ||
+        !assertionDetails ||
+        assertionDetails.settled ||
+        oracleState !== "READY_TO_SETTLE"
+      }
+      variant="outline"
+      className="gap-2 bg-transparent justify-start sm:col-span-2"
+    >
+      <Shield className="h-4 w-4 text-primary" />
+      Settle Market
+    </Button>
 
-              {/* Dispute Button */}
-{assertionDetails &&
-  oracleState === "LIVENESS" &&
-  !isAsserter && (
+  </div> 
+</div> 
 
-  <Button
-    onClick={handleDispute}
-    disabled={isLoading}
-    variant="outline"
-    className="gap-2 bg-transparent justify-start"
-  >
-    <Ban className="h-4 w-4 text-red-400" />
-    Dispute Assertion
-  </Button>
-)}
-
-<Button
-  onClick={handleSettle}
-  disabled={
-    isLoading ||
-    !assertionDetails ||
-    !(
-      oracleState === "READY_TO_SETTLE" ||
-      (oracleState === "DISPUTED" && assertionDetails.settled)
-    )
-  }
-  variant="outline"
-  className="gap-2 bg-transparent justify-start sm:col-span-2"
->
-  <Shield className="h-4 w-4 text-primary" />
-  Settle Market
-</Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Transaction Modal */}
-        <TransactionModal
-          open={showModal}
-          onClose={handleCloseModal}
-          txHash={txHash}
-          isLoading={isLoading}
-          error={error}
-          title={modalTitle}
-          description={modalDesc}
-        />
-      </div>
-    );
-  }
+</div> 
+</div> 
+<TransactionModal
+  open={showModal}
+  onClose={handleCloseModal}
+  txHash={txHash}
+  isLoading={isLoading}
+  error={error}
+  title={modalTitle}
+  description={modalDesc}
+/>
+</>
+);
+}

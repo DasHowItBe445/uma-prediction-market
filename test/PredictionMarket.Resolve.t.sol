@@ -28,7 +28,7 @@ contract PredictionMarketResolveTest is PredictionMarketTestCommon {
         // Verify resolved in PredictionMarket storage.
         MyPredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
         assertTrue(market.resolved);
-        assertEq(market.assertedOutcomeId, keccak256(bytes(outcome1)));
+        assertEq(market.finalOutcomeId, keccak256(bytes(outcome1)));
     }
 
     function test_ResolveMarketWithWrongDispute() public {
@@ -53,7 +53,7 @@ contract PredictionMarketResolveTest is PredictionMarketTestCommon {
         // Verify resolved in PredictionMarket storage.
         MyPredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
         assertTrue(market.resolved);
-        assertEq(market.assertedOutcomeId, keccak256(bytes(outcome1)));
+        assertEq(market.finalOutcomeId, keccak256(bytes(outcome1)));
     }
 
     function test_AssertionWithCorrectDispute() public {
@@ -96,6 +96,6 @@ contract PredictionMarketResolveTest is PredictionMarketTestCommon {
         // Verify the second outcome resolved in PredictionMarket storage.
         MyPredictionMarket.Market memory market = predictionMarket.getMarket(marketId);
         assertTrue(market.resolved);
-        assertEq(market.assertedOutcomeId, keccak256(bytes(outcome2)));
+        assertEq(market.finalOutcomeId, keccak256(bytes(outcome2)));
     }
 }
