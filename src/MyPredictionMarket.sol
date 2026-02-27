@@ -43,7 +43,7 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
 
     bytes32 public immutable defaultIdentifier;
 
-    uint64 public constant assertionLiveness = 7200;
+    uint64 public constant assertionLiveness = 120;
 
     uint256 public constant DISPUTE_EXTENSION = 2 days;
 

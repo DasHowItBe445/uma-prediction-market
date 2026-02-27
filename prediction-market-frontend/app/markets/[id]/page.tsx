@@ -93,7 +93,7 @@
                 assertion !==
                   "0x0000000000000000000000000000000000000000000000000000000000000000"
               ) {
-                const details = await getAssertionDetails(assertion);
+                const details = await getAssertionDetails(marketId); 
                 setAssertionDetails(details);
               } else {
                 setAssertionDetails(null);
@@ -119,11 +119,13 @@
         ]);
 
     useEffect(() => {
-      if (!assertionId) return;
+      if (!assertionId ||
+        assertionId === "0x0000000000000000000000000000000000000000000000000000000000000000")
+        return;
     
       const interval = setInterval(async () => {
         try {
-          const details = await getAssertionDetails(assertionId);
+          const details = await getAssertionDetails(marketId);
           setAssertionDetails(details);
     
           const updated = await getMarketDetails(marketId);
@@ -221,14 +223,15 @@
         const assertion = await getAssertionForMarket(marketId);
         setAssertionId(assertion);
     
-        if (
-          assertion &&
-          assertion !==
-            "0x0000000000000000000000000000000000000000000000000000000000000000"
-        ) {
-          const details = await getAssertionDetails(assertion);
-          setAssertionDetails(details);
-        }
+        if (assertion &&
+          assertion !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+      
+        const details = await getAssertionDetails(marketId); // ✅ FIXED
+        setAssertionDetails(details);
+      
+      } else {
+        setAssertionDetails(null);
+      }
     
         const data = await getMarketDetails(marketId);
         setMarket(data);
@@ -293,7 +296,7 @@
         ) {
           setAssertionId(newAssertion);
     
-          const details = await getAssertionDetails(newAssertion);
+          const details = await getAssertionDetails(marketId); 
           setAssertionDetails(details);
         } else {
           setAssertionId(null);
@@ -322,11 +325,11 @@
       setShowModal(true);
     
       try {
-        await disputeAssertion(assertionId);
+        await disputeAssertion(marketId);
     
         toast.success("Assertion disputed!");
     
-        const details = await getAssertionDetails(assertionId);
+        const details = await getAssertionDetails(marketId);
         setAssertionDetails(details);
     
       } catch (e: any) {
@@ -482,7 +485,7 @@
 </div>
 
               {/* Oracle Status */}
-{assertionId && assertionDetails && (
+              {assertionDetails?.assertionId && (
   <div className="mt-6 p-4 rounded-lg border border-border bg-secondary/30 space-y-2">
 
     <h3 className="text-sm font-semibold text-foreground">
@@ -592,36 +595,77 @@
 
   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
-    {assertionDetails &&
-      oracleState === "LIVENESS" &&
-      !isAsserter && (
-        <Button
-          onClick={handleDispute}
-          disabled={isLoading}
-          variant="outline"
-          className="gap-2 bg-transparent justify-start"
-        >
-          <Ban className="h-4 w-4 text-red-400" />
-          Dispute Assertion
-        </Button>
-    )}
+{/* Mint */}
+{!market.resolved && (
+  <Button
+    onClick={handleMint}
+    disabled={isLoading}
+    variant="outline"
+    className="gap-2 bg-transparent justify-start"
+  >
+    <Coins className="h-4 w-4 text-primary" />
+    Mint Tokens
+  </Button>
+)}
 
+{/* Assert YES */}
+{!assertionDetails?.assertionId && !market.resolved && (
+  <Button
+    onClick={() => handleAssert(market.outcome1)}
+    disabled={isLoading}
+    variant="outline"
+    className="gap-2 bg-transparent justify-start"
+  >
+    <Zap className="h-4 w-4 text-emerald-400" />
+    Assert {market.outcome1}
+  </Button>
+)}
+
+{/* Assert NO */}
+{!assertionDetails?.assertionId && !market.resolved && (
+  <Button
+    onClick={() => handleAssert(market.outcome2)}
+    disabled={isLoading}
+    variant="outline"
+    className="gap-2 bg-transparent justify-start"
+  >
+    <Zap className="h-4 w-4 text-rose-400" />
+    Assert {market.outcome2}
+  </Button>
+)}
+
+{/* Dispute */}
+{assertionDetails &&
+  oracleState === "LIVENESS" &&
+  !isAsserter && (
     <Button
-      onClick={handleSettle}
-      disabled={
-        isLoading ||
-        !assertionDetails ||
-        assertionDetails.settled ||
-        oracleState !== "READY_TO_SETTLE"
-      }
+      onClick={handleDispute}
+      disabled={isLoading}
       variant="outline"
-      className="gap-2 bg-transparent justify-start sm:col-span-2"
+      className="gap-2 bg-transparent justify-start"
     >
-      <Shield className="h-4 w-4 text-primary" />
-      Settle Market
+      <Ban className="h-4 w-4 text-red-400" />
+      Dispute Assertion
     </Button>
+)}
 
-  </div> 
+{/* Settle */}
+<Button
+  onClick={handleSettle}
+  disabled={
+    isLoading ||
+    !assertionDetails ||
+    assertionDetails.settled ||
+    oracleState !== "READY_TO_SETTLE"
+  }
+  variant="outline"
+  className="gap-2 bg-transparent justify-start sm:col-span-2"
+>
+  <Shield className="h-4 w-4 text-primary" />
+  Settle Market
+</Button>
+
+</div>
 </div> 
 
 </div> 

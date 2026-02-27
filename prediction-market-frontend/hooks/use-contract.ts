@@ -476,72 +476,75 @@ const getTokenBalance = useCallback(async (): Promise<string> => {
 }, [contract, signer, account, getTokenDecimals]);
 
 const getAssertionDetails = useCallback(
-  async (assertionId: string) => {
+  async (marketId: string) => {
     if (!contract) return null;
 
     try {
-      const oo = await contract.oo(); // oracle address
+      const result = await contract.getAssertionData(marketId);
 
-      const oracle = new ethers.Contract(
-        oo,
-        [
-          "function getAssertion(bytes32) view returns (tuple(address asserter,uint64 expirationTime,bool settled,bool disputed,address callbackRecipient,address disputer,uint256 bond,address currency))"
-        ],
-        signer
-      );
+      const assertionId = result[0];
+      const settled = result[1];
+      const disputed = result[2];
+      const expirationTime = Number(result[3]);
 
-      console.log("USING CONTRACT:", CONTRACT_ADDRESS);
+      if (!assertionId || assertionId === ethers.ZeroHash) {
+        return {
+          assertionId: null,
+          settled: false,
+          disputed: false,
+          expirationTime: 0,
+          state: "NO_ASSERTION",
+        };
+      }
 
-      const result = await oracle.getAssertion(assertionId);
+      const now = Math.floor(Date.now() / 1000);
+
+      let state = "LIVE";
+
+      if (settled) {
+        state = "SETTLED";
+      } else if (disputed) {
+        state = "DISPUTED";
+      } else if (now >= expirationTime) {
+        state = "READY_TO_SETTLE";
+      }
 
       return {
-        asserter: result[0],
-        expirationTime: Number(result[1]),
-        settled: result[2],
-        disputed: result[3],
-        resolved: result[4],
-        disputer: result[6],
-        bond: result[7],
+        assertionId,
+        settled,
+        disputed,
+        expirationTime,
+        state,
       };
-
 
     } catch (e) {
       console.error("Assertion fetch failed", e);
       return null;
     }
   },
-  [contract, signer]
+  [contract]
 );
 const disputeAssertion = useCallback(
-  async (assertionId: string) => {
+  async (marketId: string) => {
     if (!contract || !signer || !account)
       throw new Error("Not connected");
 
-    const ooAddr = await contract.oo();
+    resetState();
+    setIsLoading(true);
 
-    // 🔥 Fetch bond
-    const details = await getAssertionDetails(assertionId);
+    try {
+      const tx = await contract.disputeAssertion(marketId);
 
-    if (!details) throw new Error("Assertion not found");
+      setTxHash(tx.hash);
+      await tx.wait();
 
-    const bond: bigint = details.bond;
+      return tx.hash;
 
-    // 🔥 Ensure allowance
-    await ensureAllowanceFor(ooAddr, bond);
-
-    const oracle = new ethers.Contract(
-      ooAddr,
-      ["function disputeAssertion(bytes32,address)"],
-      signer
-    );
-
-    const tx = await oracle.disputeAssertion(assertionId, account);
-
-    await tx.wait();
-
-    return tx.hash;
+    } finally {
+      setIsLoading(false);
+    }
   },
-  [contract, signer, account, ensureAllowanceFor, getAssertionDetails]
+  [contract, signer, account, resetState]
 );
 
   /* ---------------- Export ---------------- */
