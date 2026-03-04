@@ -48,7 +48,7 @@ Redeem Tokens
 ##Smart Contract Architecture
 
 Core components:
-
+```bash
 MyPredictionMarket.sol
 │
 ├─ Market creation
@@ -57,7 +57,7 @@ MyPredictionMarket.sol
 ├─ Dispute handling
 ├─ Oracle callbacks
 └─ Settlement logic
-
+```
 UMA contracts used:
 - Finder
 - Store
@@ -188,7 +188,7 @@ Tests cover:
 5. Assert outcome
 6. Wait for resolution
 
-##Oracle Sandbox Environment
+## Oracle Sandbox Environment
 
 For testing dispute flows without the production oracle, a sandbox oracle environment can be deployed.
 
@@ -211,8 +211,8 @@ forge script script/OracleSandbox.s.sol \
 
 The script prints deployed addresses which must be used when deploying the prediction market.
 
-##Repository Structure
-
+## Repository Structure
+```bash
 uma-prediction-market
 │
 ├─ src/
@@ -229,7 +229,7 @@ uma-prediction-market
 │
 ├─ foundry.toml
 └─ README.md
-
+```
 ## Prerequisites
 
 Before starting, make sure you have:
