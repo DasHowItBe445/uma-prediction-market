@@ -1,13 +1,20 @@
 import { Contract } from "ethers";
 
 /**
- * Minimal ERC20 ABI
+ * Standard ERC20 ABI
  */
 export const ERC20_ABI = [
-  "function approve(address spender, uint256 amount) external returns (bool)",
-  "function allowance(address owner, address spender) external view returns (uint256)",
-  "function balanceOf(address owner) external view returns (uint256)",
-  "function decimals() external view returns (uint8)",
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function totalSupply() view returns (uint256)",
+
+  "function balanceOf(address owner) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function transferFrom(address from, address to, uint256 amount) returns (bool)"
 ];
 
 /**
@@ -17,5 +24,5 @@ export function getERC20Contract(
   tokenAddress: string,
   signerOrProvider: any
 ) {
-  return new Contract(tokenAddress, ERC20_ABI, signerOrProvider);
+  return new Contract(tokenAddress.trim(), ERC20_ABI, signerOrProvider);
 }

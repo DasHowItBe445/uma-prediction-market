@@ -1,11 +1,11 @@
 import MyPredictionMarket from "@/abi/MyPredictionMarket.json";
 
 // Sepolia Testnet
-export const SEPOLIA_CHAIN_ID = 31337;
+export const SEPOLIA_CHAIN_ID = 11155111;
 
 // DEPLOYED CONTRACT
 export const CONTRACT_ADDRESS =
-  "0x0B306BF915C4d645ff596e518fAf3F9669b97016";
+  "0xe7377A9D8cAf330d0A55b29EEF6a5697f9639579";
 
 // EXACT ABI FROM FOUNDRY
 export const CONTRACT_ABI = MyPredictionMarket.abi;

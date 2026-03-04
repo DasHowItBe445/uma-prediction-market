@@ -4,11 +4,9 @@ pragma solidity ^0.8.16;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract MockToken is ERC20 {
-    constructor() ERC20("Test USD", "tUSD") {
-        _mint(msg.sender, 1_000_000 ether);
+
+    constructor() ERC20("Prediction Market Token", "PMT") {
+        _mint(msg.sender, 1_000_000 * 10 ** 18);
     }
 
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
 }
