@@ -1,8 +1,13 @@
 # UMA-Based Prediction Market
 
-This repository contains a custom Prediction Market smart contract built using UMA Optimistic Oracle V3 and Foundry.
+A decentralized Prediction Market built using the UMA Protocol Optimistic Oracle V3.
+The project demonstrates how prediction markets can be created, asserted, disputed, and resolved using UMA’s optimistic oracle design.
 
-The project demonstrates how decentralized markets can be created, asserted, disputed, and resolved using UMA’s optimistic oracle design.
+This repository contains both:
+- Smart contracts built with Foundry
+- Frontend application built with Next.js
+
+The system allows users to create markets, mint outcome tokens, assert outcomes, dispute incorrect assertions, and settle markets after oracle resolution.
 
 ## Project Overview
 
@@ -11,34 +16,122 @@ The project demonstrates how decentralized markets can be created, asserted, dis
 - Oracle: UMA Optimistic Oracle V3
 - Framework: Foundry
 
-This project allows users to:
+This prediction market supports the full UMA oracle lifecycle:
 - Create prediction markets
 - Mint outcome tokens
 - Assert outcomes via UMA Oracle
-- Handle disputes and re-assertions
+- Handle disputes
 - Settle markets after resolution
 - Redeem outcome tokens for collateral
 
-## Deployment
+##Prediction Market Lifecycle
 
-The contract has been deployed on Sepolia:
+The market follows the UMA optimistic oracle workflow:
 
-Contract Address:
-0xf9168C61523cD2151e4830185419247EE8fdB249
+Create Market
+      ↓
+Mint Outcome Tokens
+      ↓
+Assert Outcome
+      ↓
+Dispute Window Opens
+      ↓
+(Optional) Dispute Assertion
+      ↓
+Oracle Resolution
+      ↓
+Settle Market
+      ↓
+Redeem Tokens
 
-Verified on Etherscan:
-https://sepolia.etherscan.io/address/0xf9168C61523cD2151e4830185419247EE8fdB249
 
-Deployment was done using:
+##Smart Contract Architecture
+
+Core components:
+
+MyPredictionMarket.sol
+│
+├─ Market creation
+├─ Outcome token minting
+├─ Assertion management
+├─ Dispute handling
+├─ Oracle callbacks
+└─ Settlement logic
+
+UMA contracts used:
+- Finder
+- Store
+- OptimisticOracleV3
+
+##Running the Frontend
+
+cd prediction-market-frontend
+npm install
+npm run dev
+
+Open:
+
+http://localhost:3000
+
+##Smart Contract Deployment
+
+Deploy using Foundry:
 
 ```bash
 forge script script/DeployPredictionMarket.s.sol \
-  --rpc-url $RPC_URL \
-  --broadcast \
-  --private-key $PRIVATE_KEY
+--rpc-url $SEPOLIA_RPC \
+--private-key $PRIVATE_KEY \
+--broadcast
 ```
 
-This repository contains example contracts and tests for integrating with the UMA Optimistic Oracle V3.
+After deployment, update the frontend with the new contract address.
+
+##Environment Setup
+
+Create a .env file in the project root:
+
+SEPOLIA_RPC=your_rpc_url
+PRIVATE_KEY=your_wallet_private_key
+
+FINDER=uma_finder_address
+OO_V3=optimistic_oracle_v3_address
+CURRENCY=bond_token_address
+
+### Install dependencies 👷‍♂️
+
+On Linux and macOS Foundry toolchain can be installed with:
+
+```bash
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+```
+
+In case there was a prior version of Foundry installed, it is advised to update it with `foundryup` command.
+
+Other installation methods are documented [here](https://book.getfoundry.sh/getting-started/installation).
+
+Forge manages dependencies using [git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules) by default, which
+ is also the method used in this repository. To install dependencies, run:
+
+```bash
+forge install
+```
+
+### Compile the contracts 🏗
+
+Compile the contracts with:
+
+```bash
+forge build
+```
+
+### Run the tests 🧪
+
+Test the example contracts with:
+
+```bash
+forge test
+```
 
 ## Usage Example
 
@@ -86,35 +179,6 @@ Tests cover:
 - Oracle callbacks and resolution logic
 - Revert conditions and failure paths
 
-## Frontend
-
-Location: prediction-market-frontend/
-
-Tech Stack:
-- Next.js
-- Ethers.js
-- TailwindCSS
-
-Run locally:
-```bash
-cd prediction-market-frontend
-npm install
-npm run dev
-```
-
-## Open:
-
-http://localhost:3000/
-
-## Features
-
-- Wallet connection (MetaMask)
-- Create markets
-- Mint outcome tokens
-- Assert outcomes
-- Redeem tokens
-- Transaction status modal
-
 ## Demo
 
 1. Connect MetaMask to Sepolia
@@ -124,13 +188,47 @@ http://localhost:3000/
 5. Assert outcome
 6. Wait for resolution
 
-## Documentation 📚
+##Oracle Sandbox Environment
 
-Full documentation on how to build, test, deploy and interact with the example contracts in this repository are
- documented [here](https://docs.uma.xyz/developers/optimistic-oracle).
+For testing dispute flows without the production oracle, a sandbox oracle environment can be deployed.
 
-This project uses [Foundry](https://getfoundry.sh). See the [book](https://book.getfoundry.sh/getting-started/installation.html)
- for instructions on how to install and use Foundry.
+This deploys:
+- Finder
+- Store
+- IdentifierWhitelist
+- OptimisticOracleV3
+- Mock Oracle
+- Mintable ERC20 token
+
+Deploy with:
+
+```bash
+forge script script/OracleSandbox.s.sol \
+--rpc-url $ETH_RPC_URL \
+--private-key $PRIVATE_KEY \
+--broadcast
+```
+
+The script prints deployed addresses which must be used when deploying the prediction market.
+
+##Repository Structure
+
+uma-prediction-market
+│
+├─ src/
+│   ├─ MyPredictionMarket.sol
+│   └─ MockToken.sol
+│
+├─ script/
+│   ├─ DeployPredictionMarket.s.sol
+│   └─ OracleSandbox.s.sol
+│
+├─ prediction-market-frontend/
+│
+├─ test/
+│
+├─ foundry.toml
+└─ README.md
 
 ## Prerequisites
 
@@ -142,90 +240,11 @@ Before starting, make sure you have:
 - Foundry installed
 - An RPC provider (Alchemy/Infura/Ankr)
 
-## Environment Setup
+## Documentation 📚
 
-Create a `.env` file in the root directory:
+Full documentation on how to build, test, deploy and interact with the example contracts in this repository are
+ documented [here](https://docs.uma.xyz/developers/optimistic-oracle).
 
-```env
-SEPOLIA_RPC=your_rpc_url_here
-PRIVATE_KEY=your_private_key_here
-ETHERSCAN_API_KEY=your_api_key_here
-```
+This project uses [Foundry](https://getfoundry.sh). See the [book](https://book.getfoundry.sh/getting-started/installation.html)
+ for instructions on how to install and use Foundry.
 
-## Getting Started 👩‍💻
-
-### Install dependencies 👷‍♂️
-
-On Linux and macOS Foundry toolchain can be installed with:
-
-```bash
-curl -L https://foundry.paradigm.xyz | bash
-foundryup
-```
-
-In case there was a prior version of Foundry installed, it is advised to update it with `foundryup` command.
-
-Other installation methods are documented [here](https://book.getfoundry.sh/getting-started/installation).
-
-Forge manages dependencies using [git submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules) by default, which
- is also the method used in this repository. To install dependencies, run:
-
-```bash
-forge install
-```
-
-### Compile the contracts 🏗
-
-Compile the contracts with:
-
-```bash
-forge build
-```
-
-### Run the tests 🧪
-
-Test the example contracts with:
-
-```bash
-forge test
-```
-
-## Sandboxed Optimistic Oracle environment 🚀
-
-In order to experiment with the dispute flow on deployed example contracts, it might be useful to deploy a sandboxed
- Optimistic Oracle environment where dispute resolution is handled by a mock Oracle. This requires exporting following
- environment variables:
-- `ETH_RPC_URL`: URL of the RPC node to use for broadcasting deployment transactions.
-- `MNEMONIC`: Mnemonic of the account to use for deployment.
-- `ETHERSCAN_API_KEY`: API key for Etherscan, used for verifying deployed contracts.
-- `DEFAULT_IDENTIFIER`: Default identifier used by Optimistic Oracle V3 when resolving disputes. If not provided, this
- defaults to `ASSERT_TRUTH` identifier.
-- `DEFAULT_LIVENESS`: Default liveness in seconds used by Optimistic Oracle V3 when settling assertions. If not
- provided, this defaults to `7200` seconds.
-- `DEFAULT_CURRENCY`: Default currency used by Optimistic Oracle V3 when bonding assertions and disputes. If not
- provided, the script would also deploy a mintable ERC20 token and use it as the default currency based on following
- parameters:
-  - `DEFAULT_CURRENCY_NAME`: Name of the new token. If not provided, this defaults to `Default Bond Token`.
-  - `DEFAULT_CURRENCY_SYMBOL`: Symbol of the new token. If not provided, this defaults to `DBT`.
-  - `DEFAULT_CURRENCY_DECIMALS`: Number of decimals of the new token. If not provided, this defaults to `18`.
-- `MINIMUM_BOND`: Minimum bond amount in Wei of default currency required by Optimistic Oracle V3 when accepting new
- assertions. If not provided, this defaults to `100e18` Wei.
-
-The sandboxed environment can be deployed and verified with:
-
-```bash
-forge script \
---broadcast \
---fork-url $ETH_RPC_URL \
---mnemonics "$MNEMONIC" \
---sender $(cast wallet address --mnemonic "$MNEMONIC") \
---verify \
-script/OracleSandbox.s.sol
-```
-
-On other networks than Ethereum the verification might require additional `--verifier-url` parameter with URL of the
- verification API endpoint.
-
-At the top of the script output the addresses of the deployed contracts should be logged. These will be required when
- deploying example contracts. Please see the [documentation](https://docs.uma.xyz/developers/optimistic-oracle)
- for more details on how to use this sandboxed environment.
