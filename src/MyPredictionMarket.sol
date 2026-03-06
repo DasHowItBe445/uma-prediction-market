@@ -3,6 +3,8 @@ pragma solidity ^0.8.16;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@uma/core/contracts/common/implementation/ExpandedERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 
 import "@uma/core/contracts/optimistic-oracle-v3/interfaces/OptimisticOracleV3Interface.sol";
 import "@uma/core/contracts/optimistic-oracle-v3/interfaces/OptimisticOracleV3CallbackRecipientInterface.sol";
@@ -14,23 +16,19 @@ interface IOOV3Extended is OptimisticOracleV3Interface {
     function disputeAssertion(bytes32 assertionId, address disputer) external;
 }
 
-contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
+contract MyPredictionMarket is
+    OptimisticOracleV3CallbackRecipientInterface,
+    ReentrancyGuard,
+    AccessControl {
     
     using SafeERC20 for IERC20;
 
-    /* ---------------- Reentrancy Guard ---------------- */
-
-    uint256 private locked = 1;
-
-    modifier nonReentrant() {
-        require(locked == 1, "Reentrancy");
-        locked = 2;
-        _;
-        locked = 1;
-    }
-
     /* ---------------- Storage ---------------- */
 
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 public constant TREASURY_ROLE = keccak256("TREASURY_ROLE");
+    bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
+        
     address public treasury;
     bool public paused;
 
@@ -50,12 +48,18 @@ contract MyPredictionMarket is OptimisticOracleV3CallbackRecipientInterface {
     bytes public constant unresolvable = "Unresolvable";
 
     uint256 private marketNonce;
-    bytes32[] public marketIds;
+    mapping(uint256 => bytes32) public marketList;
+    uint256 public marketCount;
+
+    mapping(address => uint256) public marketsCreated;
+    uint256 public constant MAX_MARKETS_PER_USER = 50;
+
+    uint256 public constant MIN_REWARD = 1e6;
+    uint256 public constant MIN_DURATION = 1 hours;
 
     /* ---------------- Structs ---------------- */
 
 struct Market {
-    bool resolved; 
     bytes32 assertedOutcomeId;
     bytes32 finalOutcomeId;
 
@@ -65,7 +69,13 @@ struct Market {
     uint256 reward;
     uint256 requiredBond;
     uint256 expirationTime;
+    
+    bool resolved; 
 
+    bytes32 outcome1Hash;
+    bytes32 outcome2Hash;
+    bytes32 descriptionHash;
+    
     bytes outcome1;
     bytes outcome2;
     bytes description;
@@ -118,12 +128,13 @@ struct Market {
         bytes32 indexed assertionId
     );
 
-    /* ---------------- Modifiers ---------------- */
+    event AssertionDisputed(
+        bytes32 indexed marketId,
+        bytes32 indexed assertionId,
+        address indexed disputer
+    );
 
-    modifier onlyTreasury() {
-        require(msg.sender == treasury, "Not treasury");
-        _;
-    }
+    /* ---------------- Modifiers ---------------- */
 
     modifier active() {
         require(!paused, "Paused");
@@ -149,15 +160,23 @@ struct Market {
 
     factory = new TokenFactory();
     treasury = msg.sender;
-}
+    _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    _grantRole(PAUSER_ROLE, msg.sender);
+    _grantRole(TREASURY_ROLE, msg.sender);
+    _grantRole(RESOLVER_ROLE, msg.sender);
+
+    _setRoleAdmin(PAUSER_ROLE, DEFAULT_ADMIN_ROLE);
+    _setRoleAdmin(TREASURY_ROLE, DEFAULT_ADMIN_ROLE);
+    _setRoleAdmin(RESOLVER_ROLE, DEFAULT_ADMIN_ROLE);
+    }
 
     /* ---------------- Admin ---------------- */
 
-    function pause() external onlyTreasury {
+    function pause() external onlyRole(PAUSER_ROLE) {
         paused = true;
     }
 
-    function unpause() external onlyTreasury {
+    function unpause() external onlyRole(PAUSER_ROLE) {
         paused = false;
     }
 
@@ -182,85 +201,101 @@ struct Market {
     */
 
     function initializeMarket(
-    string memory o1,
-    string memory o2,
-    string memory d,
-    uint256 reward,
-    uint256 bond,
-    uint256 duration
-)
-    external
-    active
-    returns (bytes32 id)
-{
-    require(bytes(o1).length > 0, "Empty first outcome");
-    require(bytes(o2).length > 0, "Empty second outcome");
-    require(bytes(d).length > 0, "Empty description");
-    require(duration >= 1 days, "Too short");
+        string memory o1,
+        string memory o2,
+        string memory d,
+        uint256 reward,
+        uint256 bond,
+        uint256 duration
+    )
+        external
+        active
+        returns (bytes32 id)
+    {
+        require(
+            marketsCreated[msg.sender] < MAX_MARKETS_PER_USER,
+            "Market limit reached"
+        );
+        require(bytes(o1).length > 0, "Empty first outcome");
+        require(bytes(o2).length > 0, "Empty second outcome");
+        require(bytes(d).length > 0, "Empty description");
+        require(duration >= MIN_DURATION, "Too short");
+        require(reward >= MIN_REWARD, "Reward too small");
 
-    require(
-        keccak256(bytes(o1)) != keccak256(bytes(o2)),
-        "Outcomes are the same"
-    );
+        require(
+            bond >= reward * 2,
+            "Bond must be >= 2x reward"
+        );
 
-    id = keccak256(
-        abi.encode(
+        require(
+            keccak256(bytes(o1)) != keccak256(bytes(o2)),
+            "Outcomes are the same"
+        );
+
+        id = keccak256(
+            abi.encode(
+                msg.sender,
+                d,
+                block.timestamp,
+                marketNonce
+            )
+        );
+
+        marketNonce++;
+
+        require(
+            address(markets[id].outcome1Token) == address(0),
+            "Market already exists"
+        );
+
+        ExpandedERC20 t1 =
+            factory.create(
+                string(abi.encodePacked(o1, " Token")),
+                "O1"
+            );
+
+        ExpandedERC20 t2 =
+            factory.create(
+                string(abi.encodePacked(o2, " Token")),
+                "O2"
+            );
+
+        markets[id] = Market({
+            resolved: false,
+            assertedOutcomeId: bytes32(0),
+            finalOutcomeId: bytes32(0),
+            outcome1Token: t1,
+            outcome2Token: t2,
+            reward: reward,
+            requiredBond: bond,
+            expirationTime: block.timestamp + duration,
+            outcome1Hash: keccak256(bytes(o1)),
+            outcome2Hash: keccak256(bytes(o2)),
+            descriptionHash: keccak256(bytes(d)),
+            outcome1: bytes(o1),
+            outcome2: bytes(o2),
+            description: bytes(d),
+            winningOutcome: ""
+        });
+
+        if (reward > 0) {
+        currency.safeTransferFrom(
             msg.sender,
-            d,
-            block.timestamp,
-            marketNonce
-        )
-    );
-
-    marketNonce++;
-
-    require(
-        address(markets[id].outcome1Token) == address(0),
-        "Market already exists"
-    );
-
-    ExpandedERC20 t1 =
-        factory.create(
-            string(abi.encodePacked(o1, " Token")),
-            "O1"
+            address(this),
+            reward
         );
+    }
 
-    ExpandedERC20 t2 =
-        factory.create(
-            string(abi.encodePacked(o2, " Token")),
-            "O2"
-        );
+        marketsCreated[msg.sender]++;
 
-    markets[id] = Market({
-        resolved: false,
-        assertedOutcomeId: bytes32(0),
-        finalOutcomeId: bytes32(0),
-        outcome1Token: t1,
-        outcome2Token: t2,
-        reward: reward,
-        requiredBond: bond,
-        expirationTime: block.timestamp + duration,
-        outcome1: bytes(o1),
-        outcome2: bytes(o2),
-        description: bytes(d),
-        winningOutcome: ""
-    });
+        marketList[marketCount] = id;
+        marketCount++;
 
-    if (reward > 0) {
-    currency.safeTransferFrom(
-        msg.sender,
-        address(this),
-        reward
-    );
-}
-
-    marketIds.push(id);
-
-    emit MarketInitialized(id);
-}
+        emit MarketInitialized(id);
+    }
 
 
-    /**
+        /**
      * @notice Submits an outcome assertion to the UMA Optimistic Oracle.
     *
     * @dev
@@ -290,6 +325,7 @@ struct Market {
 )
     external
     active
+    nonReentrant
     returns (bytes32 aid)
 {
     Market storage m = markets[id];
@@ -312,8 +348,8 @@ struct Market {
 
     bytes32 h = keccak256(bytes(out));
 
-    bytes32 h1 = keccak256(m.outcome1);
-    bytes32 h2 = keccak256(m.outcome2);
+    bytes32 h1 = m.outcome1Hash;
+    bytes32 h2 = m.outcome2Hash;
     bytes32 hu = keccak256(unresolvable);
 
     require(
@@ -322,7 +358,6 @@ struct Market {
     );
 
     // Mark assertion active BEFORE calling oracle
-    m.assertedOutcomeId = h;
 
     uint256 minBond = oo.getMinimumBond(address(currency));
 
@@ -338,11 +373,7 @@ struct Market {
             block.timestamp
         );
 
-    currency.safeTransferFrom(
-        msg.sender,
-        address(this),
-        bond
-    );
+    currency.safeTransferFrom(msg.sender, address(this), bond);
 
     currency.safeApprove(address(oo), 0);
     currency.safeApprove(address(oo), bond);
@@ -351,13 +382,15 @@ struct Market {
         claim,
         msg.sender,
         address(this),
-        address(0),  
+        address(0),
         assertionLiveness,
         currency,
         bond,
         defaultIdentifier,
         bytes32(0)
     );
+
+    m.assertedOutcomeId = h;
 
     assertionBond[aid] = bond;
     assertionOutcomes[aid] = h;
@@ -377,22 +410,28 @@ struct Market {
     );
 }
 
-    function disputeAssertion(bytes32 marketId) external active {
-    bytes32 aid = marketToAssertion[marketId];
-    require(aid != bytes32(0), "No active assertion");
+    function disputeAssertion(bytes32 marketId)
+        external
+        active
+        nonReentrant
+    {
+        Market storage m = markets[marketId];
+        require(!m.resolved, "Market resolved");
 
-    uint256 bond = assertionBond[aid];
+        bytes32 aid = marketToAssertion[marketId];
+        require(aid != bytes32(0), "No active assertion");
 
-    currency.safeTransferFrom(msg.sender, address(this), bond);
+        disputerOf[aid] = msg.sender;
+        disputedAssertions[aid] = true;
 
-    currency.safeApprove(address(oo), 0);
-    currency.safeApprove(address(oo), bond);
+        oo.disputeAssertion(aid, msg.sender);
 
-    disputerOf[aid] = msg.sender;
-    disputedAssertions[aid] = true;
-
-    oo.disputeAssertion(aid, msg.sender);
-}
+        emit AssertionDisputed(
+            marketId,
+            aid,
+            msg.sender
+        );
+    }
     /* ---------------- Oracle ---------------- */
 
     function assertionResolvedCallback(
@@ -416,9 +455,9 @@ struct Market {
 
         m.finalOutcomeId = outcome;
 
-        if (outcome == keccak256(m.outcome1)) {
+        if (outcome == m.outcome1Hash) {
             m.winningOutcome = string(m.outcome1);
-        } else if (outcome == keccak256(m.outcome2)) {
+        } else if (outcome == m.outcome2Hash) {
             m.winningOutcome = string(m.outcome2);
         } else {
             m.winningOutcome = "Unresolvable";
@@ -512,6 +551,7 @@ struct Market {
 )
     external
     active
+    nonReentrant
 {
     Market storage m = markets[id];
 
@@ -521,6 +561,7 @@ struct Market {
         block.timestamp < m.expirationTime,
         "Market expired"
     );
+    require(amt > 0, "Zero amount");
 
     // Only ERC20 (USDC) payments
     currency.safeTransferFrom(
@@ -594,6 +635,9 @@ struct Market {
 
     require(b1 > 0 || b2 > 0, "No tokens");
 
+    m.outcome1Token.burnFrom(msg.sender, b1);
+    m.outcome2Token.burnFrom(msg.sender, b2);
+
     if (m.finalOutcomeId == keccak256(m.outcome1)) {
         out = b1;
     }
@@ -603,9 +647,6 @@ struct Market {
     else {
         out = (b1 + b2) / 2;
     }
-
-    m.outcome1Token.burnFrom(msg.sender, b1);
-    m.outcome2Token.burnFrom(msg.sender, b2);
 
     currency.safeTransfer(msg.sender, out);
 }
@@ -620,8 +661,20 @@ struct Market {
         return markets[id];
     }
 
-    function getAllMarkets() external view returns (bytes32[] memory) {
-        return marketIds;
+    function getAllMarkets(uint256 start, uint256 end)
+    external
+    view
+    returns (bytes32[] memory)
+    {
+        require(end <= marketCount, "Out of bounds");
+
+        bytes32[] memory result = new bytes32[](end - start);
+
+        for (uint256 i = start; i < end; i++) {
+            result[i - start] = marketList[i];
+        }
+
+        return result;
     }
 
     function getMarketDetails(bytes32 id)
@@ -687,21 +740,22 @@ returns (
     external
     active
     nonReentrant
-{
-    Market storage m = markets[marketId];
+    onlyRole(RESOLVER_ROLE)
+    {
+        Market storage m = markets[marketId];
 
-    require(!m.resolved, "Market already resolved");
+        require(!m.resolved, "Market already resolved");
 
-    bytes32 aid = marketToAssertion[marketId];
-    require(aid != bytes32(0), "No assertion");
+        bytes32 aid = marketToAssertion[marketId];
+        require(aid != bytes32(0), "No assertion");
 
-    OptimisticOracleV3Interface.Assertion memory a =
-        oo.getAssertion(aid);
+        OptimisticOracleV3Interface.Assertion memory a =
+            oo.getAssertion(aid);
 
-    require(block.timestamp >= a.expirationTime, "Still in liveness");
+        require(block.timestamp >= a.expirationTime, "Still in liveness");
 
-    oo.settleAssertion(aid);
-}
+        oo.settleAssertion(aid);
+    }
 
     function getMarketAssertions(bytes32 id)
     external

@@ -51,9 +51,13 @@ contract PredictionMarketAssertionTest is PredictionMarketTestCommon {
         assertEq(assertion.asserter, TestAddress.account1);
         assertEq(assertion.callbackRecipient, address(predictionMarket));
         assertEq(address(assertion.currency), address(defaultCurrency));
-        assertEq(assertion.bond, requiredBond);
+
+        uint256 minBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+        uint256 expectedBond = requiredBond > minBond ? requiredBond : minBond;
+
+        assertEq(assertion.bond, expectedBond);
         assertEq(assertion.assertionTime, block.timestamp);
-        assertEq(assertion.expirationTime, block.timestamp + defaultLiveness);
+        assertEq(assertion.expirationTime, assertion.assertionTime + 120);
         assertEq(assertion.identifier, defaultIdentifier);
         assertEq(assertion.escalationManagerSettings.assertingCaller, address(predictionMarket));
     }
@@ -63,13 +67,18 @@ contract PredictionMarketAssertionTest is PredictionMarketTestCommon {
         _fundInitializationReward();
         vm.roll(block.number + 1);
         vm.prank(TestAddress.owner);
-        bytes32 secondMarketId = predictionMarket.initializeMarket(outcome1, outcome2, description, reward, 0, 7 days);
+        bytes32 secondMarketId = predictionMarket.initializeMarket(outcome1, outcome2, description, reward, reward * 2, 7 days);
         uint256 ooBalanceBefore = defaultCurrency.balanceOf(address(optimisticOracleV3));
         uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
 
         // Make assertion and verify minimum bond posted to Optimistic Oracle V3.
         _assertMarket(secondMarketId, outcome1);
-        assertEq(defaultCurrency.balanceOf(address(optimisticOracleV3)), ooBalanceBefore + minimumBond);
+        uint256 expectedBond = reward * 2 > minimumBond ? reward * 2 : minimumBond;
+
+        assertEq(
+            defaultCurrency.balanceOf(address(optimisticOracleV3)),
+            ooBalanceBefore + expectedBond
+        );
     }
 
     function test_DisputeCallbackReceived() public {

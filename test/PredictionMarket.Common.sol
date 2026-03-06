@@ -17,7 +17,7 @@ contract PredictionMarketTestCommon is CommonOptimisticOracleV3Test {
         _commonSetup();
         predictionMarket = new MyPredictionMarket(address(finder), address(defaultCurrency), address(optimisticOracleV3));
         uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
-        requiredBond = minimumBond < 1000e18 ? 1000e18 : minimumBond; // Make sure the bond is sufficient.
+        requiredBond = minimumBond > 1000e18 ? minimumBond : 1000e18;
         _fundInitializationReward();
     }
 
@@ -34,15 +34,28 @@ contract PredictionMarketTestCommon is CommonOptimisticOracleV3Test {
     }
 
     function _fundAssertionBond() internal {
-        defaultCurrency.allocateTo(TestAddress.account1, requiredBond);
+        uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+
+        uint256 bond =
+            requiredBond > minimumBond
+                ? requiredBond
+                : minimumBond;
+
+        defaultCurrency.allocateTo(TestAddress.account1, bond);
+
         vm.prank(TestAddress.account1);
-        defaultCurrency.approve(address(predictionMarket), requiredBond);
+        defaultCurrency.approve(address(predictionMarket), type(uint256).max);
     }
 
-    function _assertMarket(bytes32 marketId, string memory outcome) internal returns (bytes32 assertionId) {
+    function _assertMarket(bytes32 marketId, string memory outcome)
+        internal
+        returns (bytes32 assertionId)
+    {
         _fundAssertionBond();
-        vm.prank(TestAddress.account1);
+
+        vm.startPrank(TestAddress.account1);
         assertionId = predictionMarket.assertMarket(marketId, outcome);
+        vm.stopPrank();
     }
 
     function _fundCurrencyForMinting(address account) internal {

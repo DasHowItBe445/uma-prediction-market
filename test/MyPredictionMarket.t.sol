@@ -10,34 +10,48 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
 
     bytes32 marketId;
 
-    function setUp() public {
-    _commonSetup();
+    uint256 constant TEST_BOND = 2e6;
+    uint256 constant TEST_REWARD = 1e6;
 
-    market = new MyPredictionMarket(
-        address(finder),
-        address(defaultCurrency),
-        address(optimisticOracleV3)
-    );
-}
+    function setUp() public {
+        _commonSetup();
+
+        market = new MyPredictionMarket(
+            address(finder),
+            address(defaultCurrency),
+            address(optimisticOracleV3)
+        );
+    }
+
+    function _fundAndApprove(address user, uint256 amount) internal {
+        defaultCurrency.allocateTo(user, amount);
+
+        vm.startPrank(user);
+        defaultCurrency.approve(address(market), type(uint256).max);
+        vm.stopPrank();
+    }
+
 
 
     /* ================= NO DISPUTE ================= */
 
     function test_NoDispute_TeamAWins() public {
 
+        _fundAndApprove(address(this), 2e6);
+
         marketId = market.initializeMarket(
             "TeamA",
             "TeamB",
             "TeamA vs TeamB match",
-            0,
-            0,
+            TEST_REWARD,
+            TEST_BOND,
             7 days
         );
 
-        defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
+        uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+        _fundAndApprove(TestAddress.account1, minimumBond * 2);
 
         vm.startPrank(TestAddress.account1);
-        defaultCurrency.approve(address(market), type(uint256).max);
 
         bytes32 assertionId =
             market.assertMarket(marketId, "TeamA");
@@ -50,40 +64,30 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
 
         optimisticOracleV3.settleAssertion(assertionId);
 
-        (
-            bool resolved,
-            ,
-            bytes32 finalOutcome,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
+        MyPredictionMarket.Market memory m = market.getMarket(marketId);
 
-        ) = market.markets(marketId);
-
-        assertTrue(resolved);
-        assertEq(finalOutcome, keccak256(bytes("TeamA")));
+        assertTrue(m.resolved);
+        assertEq(m.finalOutcomeId, keccak256(bytes("TeamA")));
     }
 
     /* ================= DISPUTE ================= */
 
     function test_WrongAssertion_Disputed_TeamAWins() public {
 
+        _fundAndApprove(address(this), 2e6);
+
         marketId = market.initializeMarket(
             "TeamA",
             "TeamB",
             "TeamA vs TeamB match",
-            0,
-            0,
+            TEST_REWARD,
+            TEST_BOND,
             7 days
         );
 
-        defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
-        defaultCurrency.allocateTo(TestAddress.account2, 1000 ether);
+        uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+        _fundAndApprove(TestAddress.account1, minimumBond * 2);
+        _fundAndApprove(TestAddress.account2, minimumBond * 2);
 
         vm.startPrank(TestAddress.account1);
         defaultCurrency.approve(address(market), type(uint256).max);
@@ -107,41 +111,31 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
 
         assertFalse(result);
 
-        (
-            bool resolved,
-            bytes32 asserted,
-            bytes32 finalOutcome,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
+        MyPredictionMarket.Market memory m = market.getMarket(marketId);
 
-        ) = market.markets(marketId);
-
-        assertFalse(resolved);
-        assertEq(asserted, bytes32(0));
-        assertEq(finalOutcome, bytes32(0));
+        assertFalse(m.resolved);
+        assertEq(m.assertedOutcomeId, bytes32(0));
+        assertEq(m.finalOutcomeId, bytes32(0));
     }
 
     /* ================= REASSERT ================= */
 
     function test_ReassertAfterDispute_TeamAWins() public {
 
+        _fundAndApprove(address(this), 2e6);
+
         marketId = market.initializeMarket(
             "TeamA",
             "TeamB",
             "TeamA vs TeamB match",
-            0,
-            0,
+            TEST_REWARD,
+            TEST_BOND,
             7 days
         );
 
-        defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
-        defaultCurrency.allocateTo(TestAddress.account2, 1000 ether);
+        uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+        _fundAndApprove(TestAddress.account1, minimumBond * 2);
+        _fundAndApprove(TestAddress.account2, minimumBond * 2);
 
         vm.startPrank(TestAddress.account1);
         defaultCurrency.approve(address(market), type(uint256).max);
@@ -176,34 +170,23 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
 
         optimisticOracleV3.settleAssertion(secondAssertion);
 
-        (
-            bool resolved,
-            ,
-            bytes32 finalOutcome,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
+        MyPredictionMarket.Market memory m = market.getMarket(marketId);
 
-        ) = market.markets(marketId);
-
-        assertTrue(resolved);
-        assertEq(finalOutcome, keccak256(bytes("TeamA")));
+        assertTrue(m.resolved);
+        assertEq(m.finalOutcomeId, keccak256(bytes("TeamA")));
     }
 
     /* ================= MULTI MARKET ================= */
 
     function test_TwoMarkets_IsolatedResolution() public {
 
+        _fundAndApprove(address(this), 4e6);
+
         bytes32 marketA =
-            market.initializeMarket("Yes", "No", "Rain", 0, 0, 7 days);
+            market.initializeMarket("Yes", "No", "Rain", TEST_REWARD, TEST_BOND, 7 days);
 
         bytes32 marketB =
-            market.initializeMarket("Up", "Down", "BTC", 0, 0, 7 days);
+            market.initializeMarket("Up", "Down", "BTC", TEST_REWARD, TEST_BOND, 7 days);
 
         defaultCurrency.allocateTo(TestAddress.account1, 2000 ether);
 
@@ -222,35 +205,13 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
         optimisticOracleV3.settleAssertion(a);
         optimisticOracleV3.settleAssertion(b);
 
-        (
-            bool rA,
-            ,
-            bytes32 fA,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
+        MyPredictionMarket.Market memory mA = market.getMarket(marketA);
+        bool rA = mA.resolved;
+        bytes32 fA = mA.finalOutcomeId;
 
-        ) = market.markets(marketA);
-
-        (
-            bool rB,
-            ,
-            bytes32 fB,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-
-        ) = market.markets(marketB);
+        MyPredictionMarket.Market memory mB = market.getMarket(marketB);
+        bool rB = mB.resolved;
+        bytes32 fB = mB.finalOutcomeId;
 
         assertTrue(rA);
         assertTrue(rB);
@@ -263,11 +224,14 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
 
     function test_FakeAssertion_LosesBond() public {
 
-        bytes32 id =
-            market.initializeMarket("Win", "Lose", "Match", 0, 0, 7 days);
+        _fundAndApprove(address(this), 2e6);
 
-        defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
-        defaultCurrency.allocateTo(TestAddress.account2, 1000 ether);
+        bytes32 id =
+            market.initializeMarket("Win", "Lose", "Match", TEST_REWARD, TEST_BOND, 7 days);
+
+        uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+        _fundAndApprove(TestAddress.account1, minimumBond * 2);
+        _fundAndApprove(TestAddress.account2, minimumBond * 2);
 
         vm.startPrank(TestAddress.account1);
         defaultCurrency.approve(address(market), type(uint256).max);
@@ -291,22 +255,24 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
 
         assertFalse(result);
 
-        (bool resolved,,,,,,,,,,,) = market.markets(id);
+        MyPredictionMarket.Market memory m = market.getMarket(id);
 
-        assertFalse(resolved);
+    assertFalse(m.resolved);
     }
 
     /* ================= PAYOUT ================= */
 
     function test_Payout_TeamAWins() public {
 
-        bytes32 id =
-            market.initializeMarket("TeamA", "TeamB", "Final", 0, 0, 7 days);
+        _fundAndApprove(address(this), 2e6);
 
-        defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
+        bytes32 id =
+            market.initializeMarket("TeamA", "TeamB", "Final", TEST_REWARD, TEST_BOND, 7 days);
+
+        uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+        _fundAndApprove(TestAddress.account1, minimumBond * 2);
 
         vm.startPrank(TestAddress.account1);
-        defaultCurrency.approve(address(market), type(uint256).max);
 
         market.createOutcomeTokens(id, 100 ether);
 
@@ -338,13 +304,15 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
 
     function test_NoDoublePayout() public {
 
-        bytes32 id =
-            market.initializeMarket("Yes", "No", "Test", 0, 0, 7 days);
+        _fundAndApprove(address(this), 2e6);
 
-        defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
+        bytes32 id =
+            market.initializeMarket("Yes", "No", "Test", TEST_REWARD, TEST_BOND, 7 days);
+
+        uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+        _fundAndApprove(TestAddress.account1, minimumBond * 2);
 
         vm.startPrank(TestAddress.account1);
-        defaultCurrency.approve(address(market), type(uint256).max);
 
         market.createOutcomeTokens(id, 100 ether);
 
@@ -370,31 +338,35 @@ contract MyPredictionMarketTest is CommonOptimisticOracleV3Test {
     }
     function test_CannotSettleBeforeResolved() public {
 
+    _fundAndApprove(address(this), 2e6);
+    
     bytes32 id =
-        market.initializeMarket("Yes","No","Test",0,0, 7 days);
+        market.initializeMarket("Yes","No","Test", TEST_REWARD, TEST_BOND, 7 days);
 
-    defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
+    uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+    _fundAndApprove(TestAddress.account1, minimumBond * 2);
 
     vm.startPrank(TestAddress.account1);
-    defaultCurrency.approve(address(market), type(uint256).max);
 
     market.createOutcomeTokens(id, 100 ether);
 
+    vm.stopPrank();
+
     vm.expectRevert("Market not resolved");
     market.settleOutcomeTokens(id);
-
-    vm.stopPrank();
 }
 function test_NoAssertAfterResolved() public {
 
+    _fundAndApprove(address(this), 2e6);
+    
     bytes32 id =
-        market.initializeMarket("Yes","No","Test",0,0, 7 days);
+        market.initializeMarket("Yes","No","Test", TEST_REWARD, TEST_BOND, 7 days);
 
-    defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
+    uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+    _fundAndApprove(TestAddress.account1, minimumBond * 2);
 
     vm.startPrank(TestAddress.account1);
-    defaultCurrency.approve(address(market), type(uint256).max);
-
+    
     bytes32 a = market.assertMarket(id,"Yes");
 
     vm.stopPrank();
@@ -414,14 +386,16 @@ function test_NoAssertAfterResolved() public {
 }
 function test_NoMintAfterResolved() public {
 
-    bytes32 id =
-        market.initializeMarket("Yes","No","Test",0,0, 7 days);
+    _fundAndApprove(address(this), 2e6);
 
-    defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
+    bytes32 id =
+        market.initializeMarket("Yes","No","Test", TEST_REWARD, TEST_BOND, 7 days);
+
+    uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+    _fundAndApprove(TestAddress.account1, minimumBond * 2);
 
     vm.startPrank(TestAddress.account1);
-    defaultCurrency.approve(address(market), type(uint256).max);
-
+    
     bytes32 a = market.assertMarket(id,"Yes");
 
     vm.stopPrank();
@@ -441,11 +415,14 @@ function test_NoMintAfterResolved() public {
 }
 function test_BondIsLostOnFalseAssertion() public {
 
-    bytes32 id =
-        market.initializeMarket("Yes","No","Test",0,0, 7 days);
+    _fundAndApprove(address(this), 2e6);
 
-    defaultCurrency.allocateTo(TestAddress.account1, 1000 ether);
-    defaultCurrency.allocateTo(TestAddress.account2, 1000 ether);
+    bytes32 id =
+        market.initializeMarket("Yes","No","Test", TEST_REWARD, TEST_BOND, 7 days);
+
+    uint256 minimumBond = optimisticOracleV3.getMinimumBond(address(defaultCurrency));
+    _fundAndApprove(TestAddress.account1, minimumBond * 2);
+    _fundAndApprove(TestAddress.account2, minimumBond * 2);
 
     uint256 before =
         defaultCurrency.balanceOf(TestAddress.account1);
