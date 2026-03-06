@@ -77,7 +77,7 @@ contract PredictionMarketPositionTest is PredictionMarketTestCommon {
     }
 
     function test_SettleUnresolvableOutcome() public {
-        bytes32 assertionId = _assertMarket(marketId, string(predictionMarket.unresolvable()));
+        bytes32 assertionId = _assertMarket(marketId, predictionMarket.UNRESOLVABLE());
 
         // Two parties (Accounts 2 and 3 not to mix balance with asserting Account 1) mint and swap outcome tokens.
         _mintAndSwapOutcomeTokens(marketId);

@@ -28,6 +28,7 @@ contract MyPredictionMarket is
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant TREASURY_ROLE = keccak256("TREASURY_ROLE");
     bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
+    bytes32 public constant UNRESOLVABLE_HASH = keccak256("Unresolvable");
         
     address public treasury;
     bool public paused;
@@ -45,7 +46,7 @@ contract MyPredictionMarket is
 
     uint256 public constant DISPUTE_EXTENSION = 2 days;
 
-    bytes public constant unresolvable = "Unresolvable";
+    string public constant UNRESOLVABLE = "Unresolvable";
 
     uint256 private marketNonce;
     mapping(uint256 => bytes32) public marketList;
@@ -59,29 +60,28 @@ contract MyPredictionMarket is
 
     /* ---------------- Structs ---------------- */
 
-struct Market {
-    bytes32 assertedOutcomeId;
-    bytes32 finalOutcomeId;
+    struct Market {
+        bytes32 assertedOutcomeId;
+        bytes32 finalOutcomeId;
 
-    ExpandedERC20 outcome1Token;
-    ExpandedERC20 outcome2Token;
+        bytes32 outcome1Hash;
+        bytes32 outcome2Hash;
+        bytes32 descriptionHash;
 
-    uint256 reward;
-    uint256 requiredBond;
-    uint256 expirationTime;
-    
-    bool resolved; 
+        uint256 reward;
+        uint256 requiredBond;
+        uint256 expirationTime;
 
-    bytes32 outcome1Hash;
-    bytes32 outcome2Hash;
-    bytes32 descriptionHash;
-    
-    bytes outcome1;
-    bytes outcome2;
-    bytes description;
+        address outcome1Token;
+        address outcome2Token;
 
-    string winningOutcome;
-}
+        bool resolved;
+
+        bytes outcome1;
+        bytes outcome2;
+        bytes description;
+        string winningOutcome;
+    }
 
     struct AssertedMarket {
         address asserter;
@@ -132,6 +132,25 @@ struct Market {
         bytes32 indexed marketId,
         bytes32 indexed assertionId,
         address indexed disputer
+    );
+
+    event MarketSettled(
+        bytes32 indexed marketId,
+        address indexed user,
+        uint256 payout
+    );
+
+    event AssertionResolved(
+        bytes32 indexed marketId,
+        bytes32 indexed assertionId,
+        bool result
+    );
+
+    event MarketAsserted(
+        bytes32 indexed marketId,
+        bytes32 indexed assertionId,
+        address indexed asserter,
+        uint256 bond
     );
 
     /* ---------------- Modifiers ---------------- */
@@ -219,6 +238,11 @@ struct Market {
         require(bytes(o1).length > 0, "Empty first outcome");
         require(bytes(o2).length > 0, "Empty second outcome");
         require(bytes(d).length > 0, "Empty description");
+
+        bytes32 o1Hash = keccak256(bytes(o1));
+        bytes32 o2Hash = keccak256(bytes(o2));
+        bytes32 dHash = keccak256(bytes(d));
+
         require(duration >= MIN_DURATION, "Too short");
         require(reward >= MIN_REWARD, "Reward too small");
 
@@ -227,15 +251,13 @@ struct Market {
             "Bond must be >= 2x reward"
         );
 
-        require(
-            keccak256(bytes(o1)) != keccak256(bytes(o2)),
-            "Outcomes are the same"
-        );
+        require(o1Hash != o2Hash, "Outcomes are the same");
 
         id = keccak256(
             abi.encode(
+                address(this),
                 msg.sender,
-                d,
+                dHash,
                 block.timestamp,
                 marketNonce
             )
@@ -264,14 +286,14 @@ struct Market {
             resolved: false,
             assertedOutcomeId: bytes32(0),
             finalOutcomeId: bytes32(0),
-            outcome1Token: t1,
-            outcome2Token: t2,
+            outcome1Token: address(t1),
+            outcome2Token: address(t2),
             reward: reward,
             requiredBond: bond,
             expirationTime: block.timestamp + duration,
-            outcome1Hash: keccak256(bytes(o1)),
-            outcome2Hash: keccak256(bytes(o2)),
-            descriptionHash: keccak256(bytes(d)),
+            outcome1Hash: o1Hash,
+            outcome2Hash: o2Hash,
+            descriptionHash: dHash,
             outcome1: bytes(o1),
             outcome2: bytes(o2),
             description: bytes(d),
@@ -340,7 +362,6 @@ struct Market {
         "Market expired"
     );
 
-    // KEEPING YOUR EXACT CONDITION
     require(
         !m.resolved && m.assertedOutcomeId == bytes32(0),
         "Assertion active or resolved"
@@ -350,14 +371,12 @@ struct Market {
 
     bytes32 h1 = m.outcome1Hash;
     bytes32 h2 = m.outcome2Hash;
-    bytes32 hu = keccak256(unresolvable);
+    bytes32 hu = UNRESOLVABLE_HASH;
 
     require(
         h == h1 || h == h2 || h == hu,
         "Invalid outcome"
     );
-
-    // Mark assertion active BEFORE calling oracle
 
     uint256 minBond = oo.getMinimumBond(address(currency));
 
@@ -390,6 +409,8 @@ struct Market {
         bytes32(0)
     );
 
+    currency.safeApprove(address(oo), 0);
+
     m.assertedOutcomeId = h;
 
     assertionBond[aid] = bond;
@@ -407,6 +428,13 @@ struct Market {
         aid,
         msg.sender,
         out
+    );
+
+    emit MarketAsserted(
+        id,
+        aid,
+        msg.sender,
+        bond
     );
 }
 
@@ -460,7 +488,7 @@ struct Market {
         } else if (outcome == m.outcome2Hash) {
             m.winningOutcome = string(m.outcome2);
         } else {
-            m.winningOutcome = "Unresolvable";
+            m.winningOutcome = UNRESOLVABLE;
         }
 
         if (m.reward > 0) {
@@ -477,9 +505,20 @@ struct Market {
         m.assertedOutcomeId = bytes32(0);
         m.finalOutcomeId = bytes32(0);
         m.winningOutcome = "";
+
+        emit AssertionRejected(
+            a.marketId,
+            aid
+        );
     }
 
     marketToAssertion[a.marketId] = bytes32(0);
+
+    emit AssertionResolved(
+        a.marketId,
+        aid,
+        ok
+    );
 
     delete assertedMarkets[aid];
     delete assertionOutcomes[aid];
@@ -495,6 +534,14 @@ struct Market {
     require(msg.sender == address(oo), "Not oracle");
 
     disputedAssertions[aid] = true;
+
+    AssertedMarket memory a = assertedMarkets[aid];
+
+    emit AssertionDisputed(
+        a.marketId,
+        aid,
+        disputerOf[aid]
+    );
 }
 
     /**
@@ -570,8 +617,8 @@ struct Market {
         amt
     );
 
-    m.outcome1Token.mint(msg.sender, amt);
-    m.outcome2Token.mint(msg.sender, amt);
+    ExpandedERC20(m.outcome1Token).mint(msg.sender, amt);
+    ExpandedERC20(m.outcome2Token).mint(msg.sender, amt);
 
     emit OutcomeTokensCreated(
         id,
@@ -603,13 +650,12 @@ struct Market {
     {
         Market storage m = markets[id];
 
-        require(
-            address(m.outcome1Token) != address(0),
-            "Market does not exist"
-        );
+        require(address(m.outcome1Token) != address(0), "Market does not exist");
+        require(!m.resolved, "Market resolved");
+        require(block.timestamp < m.expirationTime, "Market expired");
 
-        m.outcome1Token.burnFrom(msg.sender, amt);
-        m.outcome2Token.burnFrom(msg.sender, amt);
+        ExpandedERC20(m.outcome1Token).burnFrom(msg.sender, amt);
+        ExpandedERC20(m.outcome2Token).burnFrom(msg.sender, amt);
 
         currency.safeTransfer(msg.sender, amt);
 
@@ -630,18 +676,18 @@ struct Market {
 
     require(m.resolved, "Market not resolved");
 
-    uint256 b1 = m.outcome1Token.balanceOf(msg.sender);
-    uint256 b2 = m.outcome2Token.balanceOf(msg.sender);
+    uint256 b1 = ExpandedERC20(m.outcome1Token).balanceOf(msg.sender);
+    uint256 b2 = ExpandedERC20(m.outcome2Token).balanceOf(msg.sender);
 
     require(b1 > 0 || b2 > 0, "No tokens");
 
-    m.outcome1Token.burnFrom(msg.sender, b1);
-    m.outcome2Token.burnFrom(msg.sender, b2);
+    ExpandedERC20(m.outcome1Token).burnFrom(msg.sender, b1);
+    ExpandedERC20(m.outcome2Token).burnFrom(msg.sender, b2);
 
-    if (m.finalOutcomeId == keccak256(m.outcome1)) {
+    if (m.finalOutcomeId == m.outcome1Hash) {
         out = b1;
     }
-    else if (m.finalOutcomeId == keccak256(m.outcome2)) {
+    else if (m.finalOutcomeId == m.outcome2Hash) {
         out = b2;
     }
     else {
@@ -649,6 +695,12 @@ struct Market {
     }
 
     currency.safeTransfer(msg.sender, out);
+
+    emit MarketSettled(
+        id,
+        msg.sender,
+        out
+    );
 }
 
     /* ---------------- View ---------------- */

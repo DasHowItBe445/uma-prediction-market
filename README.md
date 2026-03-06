@@ -24,7 +24,7 @@ This prediction market supports the full UMA oracle lifecycle:
 - Settle markets after resolution
 - Redeem outcome tokens for collateral
 
-##Prediction Market Lifecycle
+## Prediction Market Lifecycle
 
 The market follows the UMA optimistic oracle workflow:
 
@@ -63,7 +63,7 @@ UMA contracts used:
 - Store
 - OptimisticOracleV3
 
-##Running the Frontend
+## Running the Frontend
 
 cd prediction-market-frontend
 npm install
@@ -73,7 +73,7 @@ Open:
 
 http://localhost:3000
 
-##Smart Contract Deployment
+## Smart Contract Deployment
 
 Deploy using Foundry:
 
@@ -86,7 +86,7 @@ forge script script/DeployPredictionMarket.s.sol \
 
 After deployment, update the frontend with the new contract address.
 
-##Environment Setup
+## Environment Setup
 
 Create a .env file in the project root:
 
@@ -151,7 +151,8 @@ initializeMarket(
   "No",
   "Will it rain tomorrow?",
   100e18,
-  50e18
+  50e18,
+  1 days
 );
 
 // Mint outcome tokens
