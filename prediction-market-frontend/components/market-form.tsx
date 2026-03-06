@@ -63,10 +63,20 @@ export function MarketForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (Number(form.reward) < 0 || Number(form.requiredBond) < 0) {
-      toast.error("Invalid amount");
+    if (form.outcome1.trim() === form.outcome2.trim()) {
+      toast.error("Outcomes must be different");
       return;
-    }    
+    }
+    
+    if (Number(form.reward) < 1) {
+      toast.error("Reward must be at least 1 token");
+      return;
+    }
+    
+    if (Number(form.requiredBond) < Number(form.reward) * 2) {
+      toast.error("Bond must be at least 2x reward");
+      return;
+    }
 
     if (!isValid || !account) return;
 
@@ -172,15 +182,15 @@ if (Number(form.reward) > Number(balance)) {
               htmlFor="reward"
               className="text-sm font-medium text-foreground"
             >
-              Reward Amount (Token)
+              Reward Amount (USDC)
             </Label>
 
             <Input
               id="reward"
               type="number"
-              step="0.001"
-              min="0"
-              placeholder="0.01"
+              step="0.01"
+              min="1"
+              placeholder="1"
               value={form.reward}
               onChange={(e) => updateField("reward", e.target.value)}
               className="bg-secondary/50 border-border focus:border-primary transition-colors"
@@ -192,15 +202,15 @@ if (Number(form.reward) > Number(balance)) {
               htmlFor="requiredBond"
               className="text-sm font-medium text-foreground"
             >
-              Required Bond (Token)
+              Required Bond (USDC)
             </Label>
 
             <Input
               id="requiredBond"
               type="number"
-              step="0.001"
-              min="0"
-              placeholder="0.005"
+              step="0.01"
+              min="2"
+              placeholder="2"
               value={form.requiredBond}
               onChange={(e) => updateField("requiredBond", e.target.value)}
               className="bg-secondary/50 border-border focus:border-primary transition-colors"

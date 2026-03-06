@@ -81,12 +81,26 @@ const ensureAllowance = useCallback(
       throw new Error("Insufficient token balance");
     }
 
-    const allowance = await token.allowance(account, CONTRACT_ADDRESS);
+    let allowance = await token.allowance(account, CONTRACT_ADDRESS);
+
+  if (allowance < needed) {
+
+    const reset = await token.approve(CONTRACT_ADDRESS, 0);
+    await reset.wait();
+
+    const tx = await token.approve(
+      CONTRACT_ADDRESS,
+      ethers.MaxUint256
+    );
+
+    await tx.wait();
+
+    allowance = await token.allowance(account, CONTRACT_ADDRESS);
 
     if (allowance < needed) {
-      const tx = await token.approve(CONTRACT_ADDRESS, needed);
-      await tx.wait();
+      throw new Error("Approval failed");
     }
+  }
   },
   [contract, signer, account]
 );
@@ -217,19 +231,16 @@ const ensureAllowance = useCallback(
   
       let allowance = await token.allowance(account, spender);
   
-      // 🔁 Force approve if not enough
       if (allowance < needed) {
   
         console.log("Approving", spender, "for", needed.toString());
   
-        const tx = await token.approve(
-          spender,
-          ethers.MaxUint256 // 🔥 IMPORTANT
-        );
-  
+        const reset = await token.approve(spender, 0);
+        await reset.wait();
+
+        const tx = await token.approve(spender, ethers.MaxUint256);
         await tx.wait();
   
-        // 🔁 Recheck (important)
         allowance = await token.allowance(account, spender);
   
         console.log("New allowance:", allowance.toString());
@@ -252,12 +263,21 @@ const ensureAllowance = useCallback(
       setIsLoading(true);
   
       try {
-        const market = await contract.getMarketDetails(marketId);
+        const market = await contract.getMarket(marketId);
+
+        const decimals = await resolveDecimals(contract, signer);
+        const bond: bigint = market.requiredBond;
   
-        const bond: bigint = market[4];
-  
-        const ooAddr = await contract.oo();
-        await ensureAllowanceFor(ooAddr, bond);
+        await ensureAllowanceFor(CONTRACT_ADDRESS, bond);
+
+        const tokenAddr = await contract.currency();
+        const token = getERC20Contract(tokenAddr, signer);
+
+        const allowance = await token.allowance(account, CONTRACT_ADDRESS);
+
+        if (allowance < bond) {
+          throw new Error("Allowance not set correctly");
+        }
   
         const tx = await contract.assertMarket(
           marketId,
@@ -370,7 +390,8 @@ const getAllMarketIds = useCallback(async (): Promise<string[]> => {
   if (!contract) return [];
 
   try {
-    return await contract.getAllMarkets();
+    const count = await contract.marketCount();
+    return await contract.getAllMarkets(0, count);
   } catch {
     return [];
   }
@@ -434,7 +455,8 @@ const fetchAllMarkets = useCallback(async () => {
   if (!contract) return [];
 
   try {
-    const ids: string[] = await contract.getAllMarkets();
+    const count = await contract.marketCount();
+    const ids: string[] = await contract.getAllMarkets(0, count);
 
     const markets = await Promise.all(
       ids.map(async (id: string) => {
@@ -524,6 +546,7 @@ const getAssertionDetails = useCallback(
   },
   [contract]
 );
+
 const disputeAssertion = useCallback(
   async (marketId: string) => {
     if (!contract || !signer || !account)
@@ -533,6 +556,14 @@ const disputeAssertion = useCallback(
     setIsLoading(true);
 
     try {
+
+      const market = await contract.getMarket(marketId);
+      const bond: bigint = market.requiredBond;
+
+      const ooAddr = await contract.oo();
+
+      await ensureAllowanceFor(ooAddr, bond);
+
       const tx = await contract.disputeAssertion(marketId);
 
       setTxHash(tx.hash);
@@ -544,7 +575,7 @@ const disputeAssertion = useCallback(
       setIsLoading(false);
     }
   },
-  [contract, signer, account, resetState]
+  [contract, signer, account, resetState, ensureAllowanceFor]
 );
 
   /* ---------------- Export ---------------- */
