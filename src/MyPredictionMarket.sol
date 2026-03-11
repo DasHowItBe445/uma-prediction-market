@@ -163,31 +163,31 @@ contract MyPredictionMarket is
     /* ---------------- Constructor ---------------- */
 
     constructor(
-    address _finder,
-    address _currency,
-    address _oo
-) {
-    require(_finder != address(0), "Invalid finder");
-    require(_currency != address(0), "Invalid currency");
-    require(_oo != address(0), "Invalid oracle");
+        address _finder,
+        address _currency,
+        address _oo
+    ) {
+        require(_finder != address(0), "Invalid finder");
+        require(_currency != address(0), "Invalid currency");
+        require(_oo != address(0), "Invalid oracle");
 
-    finder = _finder;
-    currency = IERC20(_currency);
-    
-    oo = IOOV3Extended(_oo);
-    defaultIdentifier = OptimisticOracleV3Interface(_oo).defaultIdentifier();
+        finder = _finder;
+        currency = IERC20(_currency);
+        
+        oo = IOOV3Extended(_oo);
+        defaultIdentifier = OptimisticOracleV3Interface(_oo).defaultIdentifier();
 
-    factory = new TokenFactory();
-    treasury = msg.sender;
-    _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-    _grantRole(PAUSER_ROLE, msg.sender);
-    _grantRole(TREASURY_ROLE, msg.sender);
-    _grantRole(RESOLVER_ROLE, msg.sender);
+        factory = new TokenFactory();
+        treasury = msg.sender;
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(PAUSER_ROLE, msg.sender);
+        _grantRole(TREASURY_ROLE, msg.sender);
+        _grantRole(RESOLVER_ROLE, msg.sender);
 
-    _setRoleAdmin(PAUSER_ROLE, DEFAULT_ADMIN_ROLE);
-    _setRoleAdmin(TREASURY_ROLE, DEFAULT_ADMIN_ROLE);
-    _setRoleAdmin(RESOLVER_ROLE, DEFAULT_ADMIN_ROLE);
-    }
+        _setRoleAdmin(PAUSER_ROLE, DEFAULT_ADMIN_ROLE);
+        _setRoleAdmin(TREASURY_ROLE, DEFAULT_ADMIN_ROLE);
+        _setRoleAdmin(RESOLVER_ROLE, DEFAULT_ADMIN_ROLE);
+        }
 
     /* ---------------- Admin ---------------- */
 
@@ -439,27 +439,34 @@ contract MyPredictionMarket is
 }
 
     function disputeAssertion(bytes32 marketId)
-        external
-        active
-        nonReentrant
-    {
-        Market storage m = markets[marketId];
-        require(!m.resolved, "Market resolved");
+    external
+    active
+    nonReentrant
+{
+    Market storage m = markets[marketId];
+    require(!m.resolved, "Market resolved");
 
-        bytes32 aid = marketToAssertion[marketId];
-        require(aid != bytes32(0), "No active assertion");
+    bytes32 aid = marketToAssertion[marketId];
+    require(aid != bytes32(0), "No active assertion");
 
-        disputerOf[aid] = msg.sender;
-        disputedAssertions[aid] = true;
+    uint256 bond = assertionBond[aid];
 
-        oo.disputeAssertion(aid, msg.sender);
+    currency.safeTransferFrom(msg.sender, address(this), bond);
 
-        emit AssertionDisputed(
-            marketId,
-            aid,
-            msg.sender
-        );
-    }
+    currency.safeApprove(address(oo), 0);
+    currency.safeApprove(address(oo), bond);
+
+    oo.disputeAssertion(aid, msg.sender);
+
+    disputerOf[aid] = msg.sender;
+    disputedAssertions[aid] = true;
+
+    emit AssertionDisputed(
+        marketId,
+        aid,
+        msg.sender
+    );
+}
     /* ---------------- Oracle ---------------- */
 
     function assertionResolvedCallback(
